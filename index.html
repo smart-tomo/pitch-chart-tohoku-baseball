@@ -1,0 +1,2668 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ピッチチャート v3</title>
+<style>
+@media print {
+  .root, .hdr, .toast { display: none !important; }
+  #reportModal { position: static !important; background: #fff !important; padding: 0 !important; }
+  #reportInner { border-radius: 0 !important; box-shadow: none !important; }
+}
+
+/* ══════════════════════════════════════
+   スマホ用ポップアップ入力UI
+══════════════════════════════════════ */
+.sp-fab {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  color: #000;
+  font-size: 28px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(56,189,248,0.5);
+  z-index: 200;
+  transition: transform .2s;
+}
+.sp-fab:active { transform: scale(0.92); }
+
+/* スマホ用ヘッダー */
+.sp-hdr {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 52px;
+  background: #0c1a2e;
+  border-bottom: 2px solid var(--accent);
+  z-index: 100;
+  align-items: center;
+  padding: 0 14px;
+  gap: 10px;
+}
+.sp-hdr-title { font-family: 'Oswald',sans-serif; font-size: 16px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
+.sp-hdr-ab { font-size: 13px; color: var(--text); font-weight: 700; }
+.sp-hdr-count { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+.sp-hdr-btn { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.06); color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit; }
+
+/* スマホ用打席リスト画面 */
+.sp-ablist-screen {
+  display: none;
+  position: fixed;
+  inset: 52px 0 0 0;
+  background: var(--bg);
+  z-index: 150;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+/* ポップアップオーバーレイ */
+.sp-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 300;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sp-overlay.open { display: flex; }
+
+/* ポップアップ本体（ボトムシート） */
+.sp-sheet {
+  width: 100%;
+  max-height: 92vh;
+  background: var(--panel);
+  border-radius: 20px 20px 0 0;
+  overflow-y: auto;
+  padding: 0 0 40px;
+  animation: slideUp .25s ease;
+}
+@keyframes slideUp { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.sp-sheet-handle {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 8px;
+}
+.sp-sheet-handle::after {
+  content: '';
+  width: 40px; height: 4px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+}
+
+.sp-step-indicator {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 12px;
+  align-items: center;
+}
+.sp-step-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: all .2s;
+}
+.sp-step-dot.active { background: var(--accent); width: 24px; border-radius: 4px; }
+.sp-step-dot.done { background: var(--green); }
+
+.sp-step-title {
+  font-family: 'Oswald',sans-serif;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.sp-sheet-body { padding: 0 14px; }
+
+/* スマホ用ゾーングリッド（大きめ） */
+.sp-zone-lbl { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); font-family: 'Oswald',sans-serif; margin-bottom: 4px; }
+.sp-zone-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.sp-zcell {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  transition: all .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.sp-zcell.sz { background: rgba(56,189,248,0.12); border: 1.5px solid rgba(56,189,248,0.4); }
+.sp-zcell.bz { background: rgba(255,255,255,0.04); border: 1.5px solid rgba(255,255,255,0.1); }
+.sp-zcell:active { transform: scale(0.93); filter: brightness(1.5); }
+.sp-zcell.sel-s { background: rgba(192,132,252,0.5) !important; border-color: var(--purple) !important; box-shadow: 0 0 12px rgba(192,132,252,0.5); }
+.sp-zcell.sel-p { background: rgba(251,146,60,0.5) !important; border-color: var(--orange) !important; box-shadow: 0 0 12px rgba(251,146,60,0.5); }
+
+/* スマホ用球種グリッド */
+.sp-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.sp-type-btn {
+  padding: 18px 8px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  transition: all .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.sp-type-btn:active { transform: scale(0.95); }
+.sp-type-btn.on { background: var(--orange); border-color: var(--orange); color: #fff; box-shadow: 0 0 14px rgba(251,146,60,0.4); }
+
+/* スマホ用結果ボタン */
+.sp-res-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.sp-res-btn {
+  padding: 20px 8px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  transition: all .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.sp-res-btn:active { transform: scale(0.95); }
+
+/* ナビボタン（次へ・戻る） */
+.sp-nav { display: flex; gap: 10px; padding: 14px 14px 0; }
+.sp-nav-back {
+  flex: 0 0 auto;
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.sp-nav-next {
+  flex: 1;
+  padding: 16px;
+  border-radius: 12px;
+  border: none;
+  background: var(--accent);
+  color: #000;
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 1px;
+}
+.sp-nav-next:active { transform: scale(0.97); }
+.sp-nav-next:disabled { background: var(--border); color: var(--muted); }
+
+/* スマホ用打球グラウンド図 */
+.sp-field-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.sp-battype-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; width: 100%; }
+.sp-battype-btn {
+  padding: 16px 4px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.sp-battype-btn.on { background: var(--green); border-color: var(--green); color: #000; }
+
+/* スマホ用投球ログ */
+.sp-log-screen {
+  display: none;
+  position: fixed;
+  inset: 52px 0 0 0;
+  background: var(--bg);
+  z-index: 150;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+/* スマホ時PC非表示 */
+@media (max-width: 768px) {
+  .root { display: none !important; }
+  .hdr  { display: none !important; }
+  .sp-fab { display: flex; align-items: center; justify-content: center; }
+  .sp-hdr { display: flex; }
+}
+/* PC時スマホUI非表示 */
+@media (min-width: 769px) {
+  .sp-fab, .sp-hdr, .sp-ablist-screen, .sp-overlay, .sp-log-screen { display: none !important; }
+}
+/* ── フォント：外部依存なし・完全オフライン対応 ── */
+@font-face {
+  font-family: 'Oswald';
+  font-style: normal;
+  font-weight: 400 700;
+  src: local('Oswald'), local('Impact'), local('Arial Narrow');
+}
+
+:root {
+  --bg:     #080f1c;
+  --panel:  #0f1b2d;
+  --card:   #152035;
+  --border: #1c3050;
+  --accent: #38bdf8;
+  --orange: #fb923c;
+  --green:  #4ade80;
+  --red:    #f87171;
+  --purple: #c084fc;
+  --yellow: #fbbf24;
+  --text:   #ddeeff;
+  --muted:  #4a6a8a;
+  --sz-col: rgba(56,189,248,0.18);
+  --sz-bdr: rgba(56,189,248,0.45);
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overflow:hidden;}
+body{font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','Meiryo',sans-serif;background:var(--bg);color:var(--text);font-size:12px;}
+
+/* ══════════════════════════════════════
+   HEADER  ── 高さを削減
+══════════════════════════════════════ */
+.hdr{
+  height:42px;
+  background:linear-gradient(180deg,#0c1a2e,#111f35);
+  border-bottom:2px solid var(--accent);
+  box-shadow:0 2px 20px rgba(56,189,248,0.12);
+  display:flex;align-items:center;gap:8px;padding:0 10px;
+  flex-shrink:0;
+}
+.logo{font-family:'Oswald',sans-serif;font-size:15px;font-weight:700;color:var(--accent);letter-spacing:2px;white-space:nowrap;}
+.hdr-inp{display:flex;gap:4px;flex:1;flex-wrap:wrap;}
+.hdr-inp input,.hdr-inp select{
+  background:rgba(255,255,255,0.06);border:1px solid var(--border);
+  color:var(--text);padding:3px 7px;border-radius:5px;font-size:11px;font-family:inherit;
+}
+.hdr-inp input{width:96px;}
+.hdr-inp select{width:76px;}
+.hdr-inp input:focus,.hdr-inp select:focus{outline:none;border-color:var(--accent);}
+
+/* スコアボード */
+.sb{display:flex;gap:2px;align-items:flex-end;}
+.inn-col{display:flex;flex-direction:column;align-items:center;}
+.inn-lbl{font-size:7px;color:var(--muted);font-family:'Oswald',sans-serif;}
+.inn-val{font-family:'Oswald',sans-serif;font-size:12px;font-weight:700;color:var(--accent);
+  background:rgba(56,189,248,0.1);border:1px solid var(--border);border-radius:3px;
+  width:22px;text-align:center;cursor:pointer;}
+.inn-val:hover{background:rgba(56,189,248,0.2);}
+
+/* ══════════════════════════════════════
+   ROOT LAYOUT
+══════════════════════════════════════ */
+.root{
+  display:grid;
+  grid-template-columns:180px 1fr 240px;
+  height:calc(100vh - 42px);
+  overflow:hidden;
+}
+
+/* ══════════════════════════════════════
+   LEFT
+══════════════════════════════════════ */
+.left{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.sec{font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:2px;color:var(--muted);
+  padding:5px 10px 4px;border-bottom:1px solid var(--border);text-transform:uppercase;}
+.ab-list{flex:1;overflow-y:auto;padding:4px;}
+.ab-card{padding:5px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;margin-bottom:3px;transition:all .15s;}
+.ab-card:hover{background:rgba(255,255,255,0.04);}
+.ab-card.act{background:rgba(56,189,248,0.1);border-color:rgba(56,189,248,0.4);}
+.ab-top{display:flex;align-items:center;gap:6px;}
+.ab-num{font-family:'Oswald',sans-serif;font-size:16px;font-weight:700;color:var(--accent);}
+.ab-name{font-size:11px;font-weight:700;}
+.ab-badges{font-size:9px;color:var(--muted);margin-top:2px;display:flex;gap:2px;flex-wrap:wrap;}
+.badge{display:inline-block;padding:1px 4px;border-radius:3px;font-size:8px;font-weight:700;font-family:'Oswald',sans-serif;}
+.b-S{background:var(--orange);color:#fff;}.b-B{background:var(--accent);color:#000;}
+.b-F{background:var(--purple);color:#fff;}.b-H{background:var(--green);color:#000;}
+.b-O{background:var(--red);color:#fff;}.b-W{background:var(--yellow);color:#000;}
+.btn-add{margin:4px;padding:7px;background:rgba(56,189,248,0.1);border:1px dashed var(--accent);
+  border-radius:6px;color:var(--accent);font-size:11px;cursor:pointer;text-align:center;
+  transition:all .2s;font-family:inherit;}
+.btn-add:hover{background:rgba(56,189,248,0.2);}
+
+/* ══════════════════════════════════════
+   CENTER
+══════════════════════════════════════ */
+.center{background:#0f1b2d;display:flex;flex-direction:column;overflow-y:auto;}
+
+/* AB header */
+.ab-hdr{
+  display:flex;align-items:center;gap:6px;padding:5px 10px;
+  border-bottom:1px solid var(--border);background:rgba(0,0,0,0.25);flex-wrap:wrap;flex-shrink:0;
+}
+.ab-hdr input{
+  background:rgba(255,255,255,0.07);border:1px solid var(--border);
+  color:var(--text);padding:4px 8px;border-radius:5px;font-size:12px;font-family:inherit;width:110px;
+}
+.hand-grp{display:flex;gap:3px;}
+.hbtn{padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;
+  color:var(--muted);font-size:11px;cursor:pointer;transition:all .2s;font-family:inherit;font-weight:700;}
+.hbtn.on{background:var(--orange);border-color:var(--orange);color:#fff;}
+
+/* count dots */
+.cnt-wrap{display:flex;gap:8px;align-items:center;margin-left:auto;}
+.cnt-g{display:flex;align-items:center;gap:3px;}
+.cnt-l{font-size:10px;font-weight:700;color:var(--muted);font-family:'Oswald',sans-serif;}
+.cnt-dots{display:flex;gap:3px;}
+.cdot{width:11px;height:11px;border-radius:50%;border:2px solid var(--muted);transition:all .2s;}
+.cdot.on-B{background:var(--accent);border-color:var(--accent);box-shadow:0 0 5px var(--accent);}
+.cdot.on-S{background:var(--orange);border-color:var(--orange);box-shadow:0 0 5px var(--orange);}
+.cdot.on-O{background:var(--red);border-color:var(--red);box-shadow:0 0 5px var(--red);}
+
+/* ── STEP PANELS ── */
+.steps{display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0;}
+.step-panel{flex:1;border-right:1px solid var(--border);padding:6px 8px;display:flex;flex-direction:column;gap:5px;}
+.step-panel:last-child{border-right:none;}
+.step-hd{display:flex;align-items:center;gap:4px;font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:1px;text-transform:uppercase;}
+.step-badge{width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;}
+.s1{background:var(--purple);color:#fff;}
+.s2{background:var(--orange);color:#fff;}
+.s3{background:var(--accent);color:#000;}
+
+/* ── ZONE GRID ── */
+.zone-wrap{display:flex;flex-direction:column;align-items:stretch;gap:2px;}
+.zone-lbl-row{display:flex;justify-content:space-between;font-size:8px;color:var(--muted);font-family:'Oswald',sans-serif;padding:0 1px;}
+.zone-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;}
+.zcell{
+  aspect-ratio:1;border-radius:4px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:8px;font-weight:700;transition:all .12s;position:relative;
+}
+.zcell.sz{background:var(--sz-col);border:1px solid var(--sz-bdr);}
+.zcell.bz{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);}
+.zcell:hover{filter:brightness(1.6);transform:scale(1.07);z-index:1;}
+.zcell.sel-s{background:rgba(192,132,252,0.5)!important;border-color:var(--purple)!important;box-shadow:0 0 8px rgba(192,132,252,0.5);transform:scale(1.09);z-index:2;}
+.zcell.sel-p{background:rgba(251,146,60,0.5)!important;border-color:var(--orange)!important;box-shadow:0 0 8px rgba(251,146,60,0.5);transform:scale(1.09);z-index:2;}
+.zcell.sel-s.sel-p{background:linear-gradient(135deg,rgba(192,132,252,0.55),rgba(251,146,60,0.55))!important;border-color:var(--green)!important;box-shadow:0 0 10px rgba(74,222,128,0.5);}
+.zone-foot{font-size:8px;color:var(--muted);text-align:center;font-family:'Oswald',sans-serif;}
+
+/* ── 球種ボタン ── */
+.pt-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;}
+.pt-btn{
+  padding:7px 4px;border-radius:6px;border:1px solid var(--border);
+  background:rgba(255,255,255,0.05);color:var(--text);
+  font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit;text-align:center;
+}
+.pt-btn:hover{background:rgba(255,255,255,0.1);}
+.pt-btn.on{background:var(--orange);border-color:var(--orange);color:#fff;box-shadow:0 0 8px rgba(251,146,60,0.4);}
+
+/* ── 結果ボタン ── */
+.res-row{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:6px 10px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.rbtn{
+  padding:9px 4px;border-radius:7px;border:1.5px solid var(--border);
+  background:rgba(255,255,255,0.04);color:var(--text);
+  font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit;text-align:center;
+}
+.rbtn:active{transform:scale(0.95);}
+.rbtn.r-S{border-color:var(--orange);color:var(--orange);}
+.rbtn.r-S.on{background:var(--orange);color:#fff;box-shadow:0 3px 10px rgba(251,146,60,0.4);}
+.rbtn.r-B{border-color:var(--accent);color:var(--accent);}
+.rbtn.r-B.on{background:var(--accent);color:#000;box-shadow:0 3px 10px rgba(56,189,248,0.4);}
+.rbtn.r-F{border-color:var(--purple);color:var(--purple);}
+.rbtn.r-F.on{background:var(--purple);color:#fff;box-shadow:0 3px 10px rgba(192,132,252,0.4);}
+.rbtn.r-H{border-color:var(--green);color:var(--green);}
+.rbtn.r-H.on{background:var(--green);color:#000;box-shadow:0 3px 10px rgba(74,222,128,0.4);}
+.rbtn.r-O{border-color:var(--red);color:var(--red);}
+.rbtn.r-O.on{background:var(--red);color:#fff;box-shadow:0 3px 10px rgba(248,113,113,0.4);}
+.rbtn.r-W{border-color:var(--yellow);color:var(--yellow);}
+.rbtn.r-W.on{background:var(--yellow);color:#000;box-shadow:0 3px 10px rgba(251,191,36,0.4);}
+
+/* 記録ボタン */
+.rec-btn{
+  margin:5px 10px 4px;padding:9px;
+  background:linear-gradient(135deg,rgba(56,189,248,0.22),rgba(56,189,248,0.12));
+  border:2px solid var(--accent);border-radius:8px;
+  color:var(--accent);font-size:13px;font-weight:700;
+  cursor:pointer;transition:all .2s;font-family:inherit;letter-spacing:1px;
+  display:flex;align-items:center;justify-content:center;gap:6px;flex-shrink:0;
+}
+.rec-btn:hover{background:rgba(56,189,248,0.3);box-shadow:0 3px 12px rgba(56,189,248,0.3);}
+.rec-btn:active{transform:scale(0.98);}
+
+/* ── ピッチログ ── */
+.pitch-log{flex:0 0 auto;max-height:200px;overflow-y:auto;padding:5px 10px;}
+.log-t{font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:4px;font-family:'Oswald',sans-serif;}
+.log-tbl{width:100%;border-collapse:collapse;font-size:10px;}
+.log-tbl th{text-align:left;padding:3px 5px;color:var(--muted);font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:.8px;border-bottom:1px solid var(--border);}
+.log-tbl td{padding:4px 5px;border-bottom:1px solid rgba(255,255,255,0.04);}
+.log-tbl tr:hover td{background:rgba(255,255,255,0.03);}
+.pn{font-family:'Oswald',sans-serif;font-weight:700;color:var(--muted);}
+.match-ok{color:var(--green);font-weight:700;}
+.match-ng{color:var(--red);font-weight:700;}
+.del{background:none;border:none;color:var(--red);cursor:pointer;font-size:11px;opacity:.45;}
+.del:hover{opacity:1;}
+
+/* ══════════════════════════════════════
+   RIGHT
+══════════════════════════════════════ */
+.right{background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.tabs{display:flex;border-bottom:1px solid var(--border);}
+.tab{flex:1;padding:6px 2px;text-align:center;font-size:9px;font-family:'Oswald',sans-serif;letter-spacing:.8px;
+  cursor:pointer;color:var(--muted);transition:all .2s;border-bottom:2px solid transparent;}
+.tab:hover{color:var(--text);}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+.tb{flex:1;overflow-y:auto;padding:7px;}
+.tp{display:none;}
+.tp.on{display:block;}
+
+.card{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:7px;}
+.ctt{font-size:9px;letter-spacing:1.5px;color:var(--muted);font-family:'Oswald',sans-serif;text-transform:uppercase;margin-bottom:6px;}
+.sr{display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:11px;}
+.sv{font-family:'Oswald',sans-serif;font-size:15px;font-weight:700;color:var(--accent);}
+.sv.r{color:var(--red);}.sv.g{color:var(--green);}.sv.y{color:var(--yellow);}.sv.p{color:var(--purple);}
+
+.big-pct{text-align:center;padding:6px 0;}
+.big-num{font-family:'Oswald',sans-serif;font-size:34px;font-weight:700;line-height:1;}
+.big-sub{font-size:10px;color:var(--muted);margin-top:3px;}
+
+/* bar */
+.br{display:flex;align-items:center;gap:5px;margin-bottom:4px;}
+.bl{font-size:10px;width:52px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bb{flex:1;height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;}
+.bf{height:100%;border-radius:3px;transition:width .4s;}
+.bc{font-size:9px;color:var(--muted);width:24px;text-align:right;font-family:'Oswald',sans-serif;}
+
+/* heatmap */
+.hmap{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin-top:4px;}
+.hcell{aspect-ratio:1;border-radius:3px;display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:700;font-family:'Oswald',sans-serif;transition:all .3s;}
+
+/* 球種ズレテーブル */
+.type-miss-tbl{width:100%;border-collapse:collapse;font-size:10px;margin-top:3px;}
+.type-miss-tbl th{text-align:left;padding:3px 5px;color:var(--muted);font-family:'Oswald',sans-serif;font-size:9px;border-bottom:1px solid var(--border);}
+.type-miss-tbl td{padding:4px 5px;border-bottom:1px solid rgba(255,255,255,0.04);}
+.miss-bar{height:5px;border-radius:3px;background:var(--red);transition:width .4s;}
+
+/* ══════════════════════════════════════
+   HEADER
+══════════════════════════════════════ */
+.hdr{
+  height:52px;
+  background:linear-gradient(180deg,#0c1a2e,#111f35);
+  border-bottom:2px solid var(--accent);
+/* ── 打球パネル・グラウンド図 ── */
+.batted-panel{display:none;padding:5px 10px;border-bottom:1px solid var(--border);background:rgba(74,222,128,0.05);flex-shrink:0;}
+.batted-panel.show{display:block;}
+.batted-hd{font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:1.5px;color:var(--green);text-transform:uppercase;margin-bottom:5px;display:flex;align-items:center;gap:4px;}
+.batted-hd-badge{width:14px;height:14px;border-radius:50%;background:var(--green);color:#000;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;}
+.field-wrap{display:flex;gap:8px;align-items:flex-start;}
+.field-svg-wrap{position:relative;flex-shrink:0;}
+.field-svg-wrap svg{display:block;}
+.bat-type-btn{padding:5px 3px;border-radius:5px;border:1.5px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);font-size:10px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit;text-align:center;}
+.bat-type-btn:hover{background:rgba(255,255,255,0.09);}
+.bat-type-btn.on{background:var(--green);border-color:var(--green);color:#000;box-shadow:0 0 8px rgba(74,222,128,0.35);}
+
+/* AB header */
+.ab-hdr{
+  display:flex;align-items:center;gap:10px;padding:9px 14px;
+  border-bottom:1px solid var(--border);background:rgba(0,0,0,0.25);flex-wrap:wrap;flex-shrink:0;
+}
+.ab-hdr input{
+  background:rgba(255,255,255,0.07);border:1px solid var(--border);
+  color:var(--text);padding:7px 12px;border-radius:7px;font-size:14px;font-family:inherit;width:130px;
+}
+.hand-grp{display:flex;gap:4px;}
+.hbtn{padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:transparent;
+  color:var(--muted);font-size:14px;cursor:pointer;transition:all .2s;font-family:inherit;font-weight:700;}
+.hbtn.on{background:var(--orange);border-color:var(--orange);color:#fff;}
+
+/* count dots */
+.cnt-wrap{display:flex;gap:12px;align-items:center;margin-left:auto;}
+.cnt-g{display:flex;align-items:center;gap:5px;}
+.cnt-l{font-size:12px;font-weight:700;color:var(--muted);font-family:'Oswald',sans-serif;}
+.cnt-dots{display:flex;gap:4px;}
+.cdot{width:14px;height:14px;border-radius:50%;border:2px solid var(--muted);transition:all .2s;}
+.cdot.on-B{background:var(--accent);border-color:var(--accent);box-shadow:0 0 7px var(--accent);}
+.cdot.on-S{background:var(--orange);border-color:var(--orange);box-shadow:0 0 7px var(--orange);}
+.cdot.on-O{background:var(--red);border-color:var(--red);box-shadow:0 0 7px var(--red);}
+
+/* ── STEP PANELS ── */
+.steps{display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0;}
+.step-panel{flex:1;border-right:1px solid var(--border);padding:10px 12px;display:flex;flex-direction:column;gap:8px;}
+.step-panel:last-child{border-right:none;}
+
+.step-hd{display:flex;align-items:center;gap:6px;font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;}
+.step-badge{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;}
+.s1{background:var(--purple);color:#fff;}
+.s2{background:var(--orange);color:#fff;}
+.s3{background:var(--accent);color:#000;}
+
+/* ── ZONE GRID ── */
+.zone-wrap{display:flex;flex-direction:column;align-items:stretch;gap:3px;}
+.zone-lbl-row{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);font-family:'Oswald',sans-serif;padding:0 1px;}
+.zone-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;}
+
+.zcell{
+  aspect-ratio:1;border-radius:5px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:700;transition:all .12s;
+  position:relative;
+}
+.zcell.sz{background:var(--sz-col);border:1px solid var(--sz-bdr);}
+.zcell.bz{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);}
+.zcell:hover{filter:brightness(1.6);transform:scale(1.07);z-index:1;}
+
+.zcell.sel-s{background:rgba(192,132,252,0.5)!important;border-color:var(--purple)!important;box-shadow:0 0 10px rgba(192,132,252,0.5);transform:scale(1.09);z-index:2;}
+.zcell.sel-p{background:rgba(251,146,60,0.5)!important;border-color:var(--orange)!important;box-shadow:0 0 10px rgba(251,146,60,0.5);transform:scale(1.09);z-index:2;}
+.zcell.sel-s.sel-p{background:linear-gradient(135deg,rgba(192,132,252,0.55),rgba(251,146,60,0.55))!important;border-color:var(--green)!important;box-shadow:0 0 12px rgba(74,222,128,0.5);}
+
+.zone-foot{font-size:9px;color:var(--muted);text-align:center;font-family:'Oswald',sans-serif;}
+
+/* ── 球種ボタン（大きめ） ── */
+.pt-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;}
+.pt-btn{
+  padding:12px 8px;border-radius:8px;border:1px solid var(--border);
+  background:rgba(255,255,255,0.05);color:var(--text);
+  font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;
+  font-family:inherit;text-align:center;
+}
+.pt-btn:hover{background:rgba(255,255,255,0.1);}
+.pt-btn.on{background:var(--orange);border-color:var(--orange);color:#fff;box-shadow:0 0 10px rgba(251,146,60,0.4);}
+
+/* ── 結果ボタン（大きく）── */
+.res-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.rbtn{
+  padding:16px 6px;border-radius:10px;border:1.5px solid var(--border);
+  background:rgba(255,255,255,0.04);color:var(--text);
+  font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;
+  font-family:inherit;text-align:center;
+}
+.rbtn:active{transform:scale(0.95);}
+.rbtn.r-S{border-color:var(--orange);color:var(--orange);}
+.rbtn.r-S.on{background:var(--orange);color:#fff;box-shadow:0 4px 14px rgba(251,146,60,0.4);}
+.rbtn.r-B{border-color:var(--accent);color:var(--accent);}
+.rbtn.r-B.on{background:var(--accent);color:#000;box-shadow:0 4px 14px rgba(56,189,248,0.4);}
+.rbtn.r-F{border-color:var(--purple);color:var(--purple);}
+.rbtn.r-F.on{background:var(--purple);color:#fff;box-shadow:0 4px 14px rgba(192,132,252,0.4);}
+.rbtn.r-H{border-color:var(--green);color:var(--green);}
+.rbtn.r-H.on{background:var(--green);color:#000;box-shadow:0 4px 14px rgba(74,222,128,0.4);}
+.rbtn.r-O{border-color:var(--red);color:var(--red);}
+.rbtn.r-O.on{background:var(--red);color:#fff;box-shadow:0 4px 14px rgba(248,113,113,0.4);}
+.rbtn.r-W{border-color:var(--yellow);color:var(--yellow);}
+.rbtn.r-W.on{background:var(--yellow);color:#000;box-shadow:0 4px 14px rgba(251,191,36,0.4);}
+
+/* 記録ボタン */
+.rec-btn{
+  margin:8px 14px 6px;padding:15px;
+  background:linear-gradient(135deg,rgba(56,189,248,0.22),rgba(56,189,248,0.12));
+  border:2px solid var(--accent);border-radius:10px;
+  color:var(--accent);font-size:16px;font-weight:700;
+  cursor:pointer;transition:all .2s;font-family:inherit;letter-spacing:1px;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  flex-shrink:0;
+}
+.rec-btn:hover{background:rgba(56,189,248,0.3);box-shadow:0 4px 16px rgba(56,189,248,0.3);}
+.rec-btn:active{transform:scale(0.98);}
+
+/* ── ピッチログ ── */
+.pitch-log{flex:1;overflow-y:auto;padding:8px 14px;}
+.log-t{font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px;font-family:'Oswald',sans-serif;}
+.log-tbl{width:100%;border-collapse:collapse;font-size:11px;}
+.log-tbl th{text-align:left;padding:4px 6px;color:var(--muted);font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:.8px;border-bottom:1px solid var(--border);}
+.log-tbl td{padding:6px 6px;border-bottom:1px solid rgba(255,255,255,0.04);}
+.log-tbl tr:hover td{background:rgba(255,255,255,0.03);}
+.pn{font-family:'Oswald',sans-serif;font-weight:700;color:var(--muted);}
+.match-ok{color:var(--green);font-weight:700;}
+.match-ng{color:var(--red);font-weight:700;}
+.del{background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;opacity:.45;}
+.del:hover{opacity:1;}
+
+/* ══════════════════════════════════════
+   RIGHT  – 分析
+══════════════════════════════════════ */
+.right{background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.tabs{display:flex;border-bottom:1px solid var(--border);}
+.tab{flex:1;padding:10px 2px;text-align:center;font-size:10px;font-family:'Oswald',sans-serif;letter-spacing:1px;
+  cursor:pointer;color:var(--muted);transition:all .2s;border-bottom:2px solid transparent;}
+.tab:hover{color:var(--text);}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+.tb{flex:1;overflow-y:auto;padding:10px;}
+.tp{display:none;}
+.tp.on{display:block;}
+
+.card{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:11px;margin-bottom:10px;}
+.ctt{font-size:10px;letter-spacing:1.5px;color:var(--muted);font-family:'Oswald',sans-serif;text-transform:uppercase;margin-bottom:8px;}
+.sr{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;}
+.sv{font-family:'Oswald',sans-serif;font-size:18px;font-weight:700;color:var(--accent);}
+.sv.r{color:var(--red);}.sv.g{color:var(--green);}.sv.y{color:var(--yellow);}.sv.p{color:var(--purple);}
+
+.big-pct{text-align:center;padding:10px 0;}
+.big-num{font-family:'Oswald',sans-serif;font-size:42px;font-weight:700;line-height:1;}
+.big-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+
+/* bar */
+.br{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
+.bl{font-size:11px;width:58px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bb{flex:1;height:8px;background:rgba(255,255,255,0.07);border-radius:4px;overflow:hidden;}
+.bf{height:100%;border-radius:4px;transition:width .4s;}
+.bc{font-size:10px;color:var(--muted);width:26px;text-align:right;font-family:'Oswald',sans-serif;}
+
+/* heatmap */
+.hmap{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin-top:6px;}
+.hcell{aspect-ratio:1;border-radius:4px;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;font-family:'Oswald',sans-serif;transition:all .3s;}
+
+/* 球種ズレテーブル */
+.type-miss-tbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px;}
+.type-miss-tbl th{text-align:left;padding:4px 6px;color:var(--muted);font-family:'Oswald',sans-serif;font-size:10px;border-bottom:1px solid var(--border);}
+.type-miss-tbl td{padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.04);}
+.miss-bar{height:6px;border-radius:3px;background:var(--red);transition:width .4s;}
+
+.export-btn{margin:8px;padding:12px;background:rgba(74,222,128,0.12);border:1px solid var(--green);
+  border-radius:8px;color:var(--green);font-size:13px;font-weight:700;cursor:pointer;
+  transition:all .2s;font-family:inherit;text-align:center;}
+.export-btn:hover{background:rgba(74,222,128,0.22);}
+
+/* 打球方向パネル */
+.batted-panel{
+  display:none;padding:8px 14px;border-bottom:1px solid var(--border);
+  background:rgba(74,222,128,0.05);flex-shrink:0;
+}
+.batted-panel.show{display:block;}
+.batted-hd{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:1.5px;color:var(--green);text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.batted-hd-badge{width:18px;height:18px;border-radius:50%;background:var(--green);color:#000;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;}
+
+/* グラウンド図 */
+.field-wrap{display:flex;gap:12px;align-items:flex-start;}
+.field-svg-wrap{position:relative;flex-shrink:0;}
+.field-svg-wrap svg{display:block;}
+
+/* 打球種別ボタン */
+.battype-row{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px;}
+.bat-type-btn{
+  padding:8px 4px;border-radius:7px;border:1.5px solid var(--border);
+  background:rgba(255,255,255,0.04);color:var(--text);
+  font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit;text-align:center;
+}
+.bat-type-btn:hover{background:rgba(255,255,255,0.09);}
+.bat-type-btn.on{background:var(--green);border-color:var(--green);color:#000;box-shadow:0 0 10px rgba(74,222,128,0.35);}
+
+/* 方向ボタン */
+.dir-btns{display:flex;flex-direction:column;gap:4px;flex:1;}
+.dir-row{display:flex;gap:4px;justify-content:center;}
+.dir-btn{
+  padding:8px 10px;border-radius:7px;border:1.5px solid var(--border);
+  background:rgba(255,255,255,0.04);color:var(--muted);
+  font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;font-family:'Oswald',sans-serif;
+  min-width:44px;text-align:center;
+}
+.dir-btn:hover{background:rgba(255,255,255,0.09);color:var(--text);}
+.dir-btn.on{background:var(--green);border-color:var(--green);color:#000;box-shadow:0 0 10px rgba(74,222,128,0.35);}
+
+/* scrollbar */
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+/* toast */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);
+  background:var(--accent);color:#000;font-weight:700;padding:10px 22px;border-radius:8px;
+  font-size:13px;transition:transform .3s;z-index:999;pointer-events:none;font-family:'Noto Sans JP',sans-serif;}
+.toast.show{transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="logo">⚾ PITCH CHART</div>
+  <div class="hdr-inp">
+    <input type="text" id="teamA" placeholder="攻撃チーム">
+    <input type="text" id="teamB" placeholder="守備チーム">
+    <input type="date" id="gameDate">
+    <input type="text" id="pitcherName" placeholder="投手名">
+    <select id="pitcherHand"><option value="R">右投</option><option value="L">左投</option></select>
+    <input type="text" id="catcherName" placeholder="捕手名" style="width:90px;">
+  </div>
+  <div class="sb" id="sb"></div>
+  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+    <span id="saveIndicator" style="font-size:10px;color:var(--green);opacity:0.5;white-space:nowrap;transition:opacity .5s;font-family:inherit;">💾 自動保存</span>
+    <button onclick="clearData()" style="padding:5px 10px;background:rgba(248,113,113,0.1);border:1px solid var(--red);border-radius:6px;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;">🗑 リセット</button>
+  </div>
+</div>
+
+<!-- ROOT -->
+<div class="root">
+
+  <!-- LEFT -->
+  <div class="left">
+    <div class="sec">打席一覧</div>
+    <div class="ab-list" id="abList"></div>
+    <button class="btn-add" onclick="addAB()">＋ 新しい打席</button>
+  </div>
+
+  <!-- CENTER -->
+  <div class="center">
+
+    <!-- AB Header -->
+    <div class="ab-hdr">
+      <span style="font-family:'Oswald',sans-serif;font-size:17px;font-weight:700;color:var(--accent)">第<span id="abNum">1</span>打席</span>
+      <input type="text" id="batterName" placeholder="打者名" oninput="syncName()">
+      <input type="text" id="catcherNameAB" placeholder="捕手名" oninput="syncCatcher()" style="width:100px;">
+      <div class="hand-grp">
+        <button class="hbtn on" id="hR" onclick="setHand('R')">右打</button>
+        <button class="hbtn" id="hL" onclick="setHand('L')">左打</button>
+      </div>
+      <div class="cnt-wrap">
+        <div class="cnt-g"><span class="cnt-l">B</span><div class="cnt-dots" id="bDots"></div></div>
+        <div class="cnt-g"><span class="cnt-l">S</span><div class="cnt-dots" id="sDots"></div></div>
+        <div class="cnt-g"><span class="cnt-l">O</span><div class="cnt-dots" id="oDots"></div></div>
+      </div>
+    </div>
+
+    <!-- 3 STEPS -->
+    <div class="steps">
+
+      <!-- STEP 1: 捕手の構え -->
+      <div class="step-panel">
+        <div class="step-hd"><div class="step-badge s1">1</div><span style="color:var(--purple)">捕手の構え</span></div>
+        <div class="zone-wrap">
+          <div class="zone-lbl-row"><span>外角</span><span>内角</span></div>
+          <div class="zone-grid" id="setupGrid"></div>
+          <div class="zone-foot">▲ バックネット裏・捕手視点</div>
+        </div>
+      </div>
+
+      <!-- STEP 2: 球種 -->
+      <div class="step-panel">
+        <div class="step-hd"><div class="step-badge s2">2</div><span style="color:var(--orange)">球種</span></div>
+        <div class="pt-grid" id="ptGrid"></div>
+      </div>
+
+      <!-- STEP 3: 実際のコース -->
+      <div class="step-panel">
+        <div class="step-hd"><div class="step-badge s3">3</div><span style="color:var(--accent)">実際のコース</span></div>
+        <div class="zone-wrap">
+          <div class="zone-lbl-row"><span>外角</span><span>内角</span></div>
+          <div class="zone-grid" id="pitchGrid"></div>
+          <div class="zone-foot">▲ 実際に来たコース</div>
+        </div>
+      </div>
+
+    </div><!-- /steps -->
+
+    <!-- 結果ボタン -->
+    <div class="res-row">
+      <button class="rbtn r-S" onclick="selRes('S')">ストライク</button>
+      <button class="rbtn r-B" onclick="selRes('B')">ボール</button>
+      <button class="rbtn r-F" onclick="selRes('F')">ファウル</button>
+      <button class="rbtn r-H" onclick="selRes('H')">安打</button>
+      <button class="rbtn r-O" onclick="selRes('O')">アウト</button>
+      <button class="rbtn r-W" onclick="selRes('W')">四球/死球</button>
+    </div>
+
+    <!-- 打球方向パネル（安打・アウト時に表示） -->
+    <div class="batted-panel" id="battedPanel">
+      <div class="batted-hd"><div class="batted-hd-badge">4</div>打球方向・種別（任意）</div>
+      <div class="field-wrap">
+
+        <!-- グラウンド図（大型・タップしやすい） -->
+        <div class="field-svg-wrap">
+          <svg width="130" height="116" viewBox="0 0 180 160" id="fieldSvg" style="display:block;">
+            <!-- 外野フェア芝 -->
+            <path d="M90,148 L8,20 L90,8 L172,20 Z" fill="rgba(74,222,128,0.06)" stroke="rgba(74,222,128,0.18)" stroke-width="1.5"/>
+            <!-- 内野ダイヤモンド -->
+            <polygon points="90,140 52,112 90,84 128,112" fill="rgba(251,191,36,0.1)" stroke="rgba(251,191,36,0.35)" stroke-width="1.2"/>
+            <!-- ピッチャーズマウンド -->
+            <circle cx="90" cy="112" r="5" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+            <!-- ベース（本塁） -->
+            <polygon points="90,148 84,142 90,136 96,142" fill="var(--yellow)" opacity="0.85"/>
+            <!-- ベース（一・二・三塁） -->
+            <rect x="124" y="108" width="8" height="8" rx="1" fill="rgba(255,255,255,0.45)" transform="rotate(45,128,112)"/>
+            <rect x="86" y="80" width="8" height="8" rx="1" fill="rgba(255,255,255,0.45)" transform="rotate(45,90,84)"/>
+            <rect x="48" y="108" width="8" height="8" rx="1" fill="rgba(255,255,255,0.45)" transform="rotate(45,52,112)"/>
+            <!-- ファウルライン -->
+            <line x1="90" y1="148" x2="8" y2="20" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4,3"/>
+            <line x1="90" y1="148" x2="172" y2="20" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4,3"/>
+
+            <!-- ── タップ可能エリア（大きめ・hover効果付き） ── -->
+            <!-- 左翼 -->
+            <path class="fzone" id="fz-LF" d="M90,148 L8,20 L50,20 L90,84 Z"
+              fill="transparent" stroke="rgba(74,222,128,0.08)" stroke-width="1"
+              onclick="selFieldZone('左翼','LF')" style="cursor:pointer"/>
+            <!-- 左中 -->
+            <path class="fzone" id="fz-LC" d="M90,84 L50,20 L90,8 Z"
+              fill="transparent" stroke="rgba(74,222,128,0.08)" stroke-width="1"
+              onclick="selFieldZone('左中','LC')" style="cursor:pointer"/>
+            <!-- 中堅 -->
+            <path class="fzone" id="fz-CF" d="M90,84 L90,8 L130,20 Z"
+              fill="transparent" stroke="rgba(74,222,128,0.08)" stroke-width="1"
+              onclick="selFieldZone('中堅','CF')" style="cursor:pointer"/>
+            <!-- 右中 -->
+            <path class="fzone" id="fz-RC" d="M90,84 L130,20 L172,20 Z"
+              fill="transparent" stroke="rgba(74,222,128,0.08)" stroke-width="1"
+              onclick="selFieldZone('右中','RC')" style="cursor:pointer"/>
+            <!-- 右翼 -->
+            <path class="fzone" id="fz-RF" d="M90,148 L128,112 L90,84 L172,20 Z"
+              fill="transparent" stroke="rgba(74,222,128,0.08)" stroke-width="1"
+              onclick="selFieldZone('右翼','RF')" style="cursor:pointer"/>
+            <!-- 三塁側内野 -->
+            <path class="fzone" id="fz-3B" d="M90,148 L52,112 L8,20 Z"
+              fill="transparent" stroke="rgba(251,191,36,0.08)" stroke-width="1"
+              onclick="selFieldZone('三塁側','3B')" style="cursor:pointer"/>
+            <!-- 投手前 -->
+            <path class="fzone" id="fz-P"  d="M90,140 L52,112 L90,84 L128,112 Z"
+              fill="transparent" stroke="rgba(251,191,36,0.08)" stroke-width="1"
+              onclick="selFieldZone('投手前','P')" style="cursor:pointer"/>
+            <!-- 一塁側内野 -->
+            <path class="fzone" id="fz-1B" d="M90,148 L128,112 L172,20 Z"
+              fill="transparent" stroke="rgba(251,191,36,0.08)" stroke-width="1"
+              onclick="selFieldZone('一塁側','1B')" style="cursor:pointer"/>
+
+            <!-- 方向ラベル（常時表示） -->
+            <text x="28"  y="70"  text-anchor="middle" font-size="9" fill="rgba(74,222,128,0.5)"  font-family="'Oswald',sans-serif">左翼</text>
+            <text x="62"  y="30"  text-anchor="middle" font-size="9" fill="rgba(74,222,128,0.5)"  font-family="'Oswald',sans-serif">左中</text>
+            <text x="90"  y="20"  text-anchor="middle" font-size="9" fill="rgba(74,222,128,0.5)"  font-family="'Oswald',sans-serif">中堅</text>
+            <text x="118" y="30"  text-anchor="middle" font-size="9" fill="rgba(74,222,128,0.5)"  font-family="'Oswald',sans-serif">右中</text>
+            <text x="152" y="70"  text-anchor="middle" font-size="9" fill="rgba(74,222,128,0.5)"  font-family="'Oswald',sans-serif">右翼</text>
+            <text x="24"  y="118" text-anchor="middle" font-size="9" fill="rgba(251,191,36,0.5)"  font-family="'Oswald',sans-serif">三塁</text>
+            <text x="90"  y="118" text-anchor="middle" font-size="9" fill="rgba(251,191,36,0.5)"  font-family="'Oswald',sans-serif">投前</text>
+            <text x="156" y="118" text-anchor="middle" font-size="9" fill="rgba(251,191,36,0.5)"  font-family="'Oswald',sans-serif">一塁</text>
+
+            <!-- 選択マーカー（アニメーション） -->
+            <circle id="fieldMarker" cx="-99" cy="-99" r="10" fill="none"
+              stroke="var(--green)" stroke-width="2.5" opacity="0.9" pointer-events="none"/>
+            <circle id="fieldMarkerDot" cx="-99" cy="-99" r="4"
+              fill="var(--green)" opacity="0.9" pointer-events="none"/>
+
+            <!-- 選択中の方向名 -->
+            <text id="fieldDirLabel" x="90" y="155" text-anchor="middle"
+              font-size="11" fill="var(--green)" font-family="'Oswald',sans-serif" font-weight="700"></text>
+          </svg>
+        </div>
+
+        <!-- 打球種別のみ（方向ボタンは削除・グラウンド図タップに統一） -->
+        <div style="display:flex;flex-direction:column;gap:6px;justify-content:center;">
+          <div style="font-size:10px;color:var(--muted);font-family:'Oswald',sans-serif;letter-spacing:1px;margin-bottom:2px;">打球種別</div>
+          <button class="bat-type-btn" onclick="selBatType('ゴロ')">🟡 ゴロ</button>
+          <button class="bat-type-btn" onclick="selBatType('フライ')">🔵 フライ</button>
+          <button class="bat-type-btn" onclick="selBatType('ライナー')">🟢 ライナー</button>
+          <button class="bat-type-btn" onclick="selBatType('バント')">⚪ バント</button>
+          <div id="selBattedSummary" style="font-size:10px;color:var(--green);margin-top:4px;text-align:center;font-weight:700;min-height:16px;"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 記録 -->
+    <button class="rec-btn" onclick="record()">✚ この投球を記録</button>
+
+    <!-- ログ -->
+    <div class="pitch-log">
+      <div class="log-t">投球ログ（現打席）</div>
+      <table class="log-tbl">
+        <thead><tr><th>#</th><th>カウント</th><th>球種</th><th>構え</th><th>実際</th><th>一致</th><th>結果</th><th></th></tr></thead>
+        <tbody id="pitchLog"></tbody>
+      </table>
+    </div>
+
+  </div><!-- /center -->
+
+  <!-- RIGHT -->
+  <div class="right">
+    <div class="tabs">
+      <div class="tab on" onclick="switchTab('sum')">サマリー</div>
+      <div class="tab" onclick="switchTab('setup')">構え×球種</div>
+      <div class="tab" onclick="switchTab('type')">球種ズレ</div>
+      <div class="tab" onclick="switchTab('zone')">コース</div>
+      <div class="tab" onclick="switchTab('batted')">打球</div>
+    </div>
+    <div class="tb">
+
+      <!-- SUMMARY -->
+      <div class="tp on" id="tab-sum">
+        <div class="card">
+          <div class="ctt">投球サマリー</div>
+          <div class="sr"><span>総投球数</span><span class="sv" id="sTotal">0</span></div>
+          <div class="sr"><span>ストライク率</span><span class="sv g" id="sStR">-</span></div>
+          <div class="sr"><span>1打席平均</span><span class="sv" id="sAvg">-</span></div>
+        </div>
+        <div class="card">
+          <div class="ctt">構え一致率</div>
+          <div class="big-pct">
+            <div class="big-num" id="matchPct" style="color:var(--green)">-</div>
+            <div class="big-sub">構え通りに投げた割合</div>
+          </div>
+          <div class="sr"><span>✔ 一致</span><span class="sv g" id="matchCnt">0</span></div>
+          <div class="sr"><span>✘ ズレ</span><span class="sv r" id="missCnt">0</span></div>
+        </div>
+        <div class="card">
+          <div class="ctt">打席結果</div>
+          <div class="sr"><span>安打</span><span class="sv r" id="sHits">0</span></div>
+          <div class="sr"><span>アウト</span><span class="sv g" id="sOuts">0</span></div>
+          <div class="sr"><span>四死球</span><span class="sv y" id="sWalks">0</span></div>
+        </div>
+        <div class="card">
+          <div class="ctt">捕手別 配球傾向</div>
+          <div id="catcherSummary"><span style="font-size:11px;color:var(--muted)">打席に捕手名を入力してください</span></div>
+        </div>
+      </div>
+
+      <!-- 構え×球種 -->
+      <div class="tp" id="tab-setup">
+        <div class="card">
+          <div class="ctt">構えコース別・球種内訳</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:8px">各コースに何の球種を要求したか</div>
+          <div id="setupZoneSelector" style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-bottom:10px;"></div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:6px" id="setupZoneName">▲ コースを選択してください</div>
+          <div id="setupTypeDist"></div>
+        </div>
+        <div class="card">
+          <div class="ctt">全コース集計（構え回数）</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:6px">多く構えたコースほど濃く表示</div>
+          <div class="hmap" id="setupHmap"></div>
+        </div>
+        <div class="card">
+          <div class="ctt">構えコース TOP5</div>
+          <div id="setupTopZones"></div>
+        </div>
+      </div>
+
+      <!-- 球種ズレ -->
+      <div class="tp" id="tab-type">
+        <div class="card">
+          <div class="ctt">球種ごとのズレ率</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:8px">赤バー＝構えと異なった割合</div>
+          <div id="typeMissDist"></div>
+        </div>
+        <div class="card">
+          <div class="ctt">球種×ズレ詳細</div>
+          <table class="type-miss-tbl" id="typeMissTbl">
+            <thead><tr><th>球種</th><th>投球</th><th>ズレ</th><th>ズレ率</th></tr></thead>
+            <tbody id="typeMissBody"></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="ctt">ズレた時の球種分布</div>
+          <div id="missTypeDist"></div>
+        </div>
+      </div>
+
+      <!-- コース -->
+      <div class="tp" id="tab-zone">
+        <div class="card">
+          <div class="ctt">投球コース分布</div>
+          <div class="hmap" id="pitchHmap"></div>
+        </div>
+        <div class="card">
+          <div class="ctt">ズレ着地コース</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px">構えと違って投げた実際の位置</div>
+          <div class="hmap" id="missHmap"></div>
+        </div>
+      </div>
+
+      <!-- 打球分析 -->
+      <div class="tp" id="tab-batted">
+
+        <!-- 打者選択 -->
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;" id="batterFilterBtns"></div>
+
+        <!-- 選択中打者の打球グラウンド図 -->
+        <div class="card">
+          <div class="ctt">打球方向マップ</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px" id="battedMapLabel">全打者</div>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <svg width="150" height="138" viewBox="0 0 180 160" id="fieldStatSvg" style="flex-shrink:0;">
+              <path d="M90,148 L8,20 L90,8 L172,20 Z" fill="rgba(74,222,128,0.05)" stroke="rgba(74,222,128,0.15)" stroke-width="1.2"/>
+              <polygon points="90,140 52,112 90,84 128,112" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.3)" stroke-width="1"/>
+              <circle cx="90" cy="112" r="4" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+              <polygon points="90,148 84,142 90,136 96,142" fill="var(--yellow)" opacity="0.7"/>
+              <rect x="124" y="108" width="8" height="8" rx="1" fill="rgba(255,255,255,0.35)" transform="rotate(45,128,112)"/>
+              <rect x="86" y="80" width="8" height="8" rx="1" fill="rgba(255,255,255,0.35)" transform="rotate(45,90,84)"/>
+              <rect x="48" y="108" width="8" height="8" rx="1" fill="rgba(255,255,255,0.35)" transform="rotate(45,52,112)"/>
+              <!-- 集計テキスト -->
+              <text id="fs-左翼"  x="30"  y="72"  text-anchor="middle" font-size="13" fill="var(--green)" font-family="'Oswald',sans-serif" font-weight="700"></text>
+              <text id="fs-左中"  x="60"  y="34"  text-anchor="middle" font-size="13" fill="var(--green)" font-family="'Oswald',sans-serif" font-weight="700"></text>
+              <text id="fs-中堅"  x="90"  y="22"  text-anchor="middle" font-size="13" fill="var(--green)" font-family="'Oswald',sans-serif" font-weight="700"></text>
+              <text id="fs-右中"  x="120" y="34"  text-anchor="middle" font-size="13" fill="var(--green)" font-family="'Oswald',sans-serif" font-weight="700"></text>
+              <text id="fs-右翼"  x="150" y="72"  text-anchor="middle" font-size="13" fill="var(--green)" font-family="'Oswald',sans-serif" font-weight="700"></text>
+              <text id="fs-三塁側" x="26" y="128" text-anchor="middle" font-size="12" fill="var(--yellow)" font-family="'Oswald',sans-serif" font-weight="700"></text>
+              <text id="fs-投手前" x="90" y="120" text-anchor="middle" font-size="12" fill="var(--yellow)" font-family="'Oswald',sans-serif" font-weight="700"></text>
+              <text id="fs-一塁側" x="154" y="128" text-anchor="middle" font-size="12" fill="var(--yellow)" font-family="'Oswald',sans-serif" font-weight="700"></text>
+            </svg>
+            <!-- 打球種別サマリー -->
+            <div style="flex:1;display:flex;flex-direction:column;gap:4px;" id="battedTypeSummary"></div>
+          </div>
+        </div>
+
+        <!-- 打者別詳細カード -->
+        <div class="card">
+          <div class="ctt">打者別 打球傾向</div>
+          <div id="batterBattedDetail"></div>
+        </div>
+
+      </div>
+
+    </div><!-- /tb -->
+    <button class="export-btn" onclick="exportCSV()">📊 CSVエクスポート</button>
+    <button class="export-btn" onclick="openReport()" style="background:rgba(192,132,252,0.12);border-color:var(--purple);color:var(--purple);margin-top:0;">📋 ミーティングレポート</button>
+  </div>
+
+</div><!-- /root -->
+
+<!-- ══ REPORT MODAL ══ -->
+<div id="reportModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;overflow-y:auto;padding:20px;">
+  <div id="reportInner" style="max-width:860px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;"></div>
+  <div style="text-align:center;margin-top:16px;display:flex;gap:10px;justify-content:center;">
+    <button onclick="window.print()" style="padding:12px 28px;background:var(--purple);border:none;border-radius:8px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;">🖨 印刷 / PDF保存</button>
+    <button onclick="closeReport()" style="padding:12px 28px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:8px;color:#fff;font-size:15px;cursor:pointer;">✕ 閉じる</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     スマホ用 UI
+══════════════════════════════════════ -->
+
+<!-- スマホヘッダー -->
+<div class="sp-hdr" id="spHdr">
+  <div class="sp-hdr-title">⚾ PITCH</div>
+  <div class="sp-hdr-ab" id="spHdrAB">第1打席</div>
+  <div class="sp-hdr-count">
+    <div class="cnt-g"><span class="cnt-l" style="font-size:11px">B</span><div class="cnt-dots" id="spBDots"></div></div>
+    <div class="cnt-g"><span class="cnt-l" style="font-size:11px">S</span><div class="cnt-dots" id="spSDots"></div></div>
+    <div class="cnt-g"><span class="cnt-l" style="font-size:11px">O</span><div class="cnt-dots" id="spODots"></div></div>
+  </div>
+  <button class="sp-hdr-btn" onclick="spShowAbList()">打席</button>
+  <button class="sp-hdr-btn" onclick="spShowLog()">ログ</button>
+</div>
+
+<!-- スマホ打席リスト画面 -->
+<div class="sp-ablist-screen" id="spAbListScreen">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <div style="font-family:'Oswald',sans-serif;font-size:14px;color:var(--accent);letter-spacing:1px;">打席一覧</div>
+    <button onclick="spCloseAbList()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:13px;cursor:pointer;font-family:inherit;">✕ 閉じる</button>
+  </div>
+  <div id="spAbListBody"></div>
+  <button onclick="addAB();spCloseAbList();" style="width:100%;padding:16px;margin-top:10px;background:rgba(56,189,248,0.1);border:1px dashed var(--accent);border-radius:10px;color:var(--accent);font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;">＋ 新しい打席</button>
+  <div style="margin-top:16px;padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid var(--border);">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-family:'Oswald',sans-serif;letter-spacing:1px;">ゲーム情報</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      <input type="text" id="spTeamA" placeholder="攻撃チーム" oninput="document.getElementById('teamA').value=this.value" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:7px;font-size:13px;font-family:inherit;">
+      <input type="text" id="spTeamB" placeholder="守備チーム" oninput="document.getElementById('teamB').value=this.value" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:7px;font-size:13px;font-family:inherit;">
+      <input type="text" id="spPitcher" placeholder="投手名" oninput="document.getElementById('pitcherName').value=this.value" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:7px;font-size:13px;font-family:inherit;">
+      <input type="text" id="spCatcher" placeholder="捕手名" oninput="document.getElementById('catcherName').value=this.value" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:7px;font-size:13px;font-family:inherit;">
+      <input type="date" id="spDate" oninput="document.getElementById('gameDate').value=this.value" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:7px;font-size:13px;font-family:inherit;grid-column:1/-1;">
+    </div>
+    <div style="margin-top:8px;text-align:center;">
+      <button onclick="exportCSV()" style="padding:10px 20px;background:rgba(74,222,128,0.12);border:1px solid var(--green);border-radius:8px;color:var(--green);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">📊 CSVエクスポート</button>
+    </div>
+  </div>
+</div>
+
+<!-- スマホ投球ログ画面 -->
+<div class="sp-log-screen" id="spLogScreen">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <div style="font-family:'Oswald',sans-serif;font-size:14px;color:var(--accent);letter-spacing:1px;">投球ログ</div>
+    <button onclick="spCloseLog()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:13px;cursor:pointer;font-family:inherit;">✕ 閉じる</button>
+  </div>
+  <div id="spLogBody"></div>
+</div>
+
+<!-- ポップアップ オーバーレイ -->
+<div class="sp-overlay" id="spOverlay">
+  <div class="sp-sheet" id="spSheet">
+    <div class="sp-sheet-handle"></div>
+
+    <!-- ステップインジケーター -->
+    <div class="sp-step-indicator" id="spStepIndicator"></div>
+
+    <!-- ステップ本体 -->
+    <div class="sp-sheet-body" id="spSheetBody"></div>
+
+    <!-- ナビ -->
+    <div class="sp-nav">
+      <button class="sp-nav-back" id="spBack" onclick="spPrevStep()">◀</button>
+      <button class="sp-nav-next" id="spNext" onclick="spNextStep()">次へ →</button>
+    </div>
+  </div>
+</div>
+
+<!-- FAB（フローティング記録ボタン） -->
+<button class="sp-fab" id="spFab" onclick="spOpenRecord()">＋</button>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ──────────────────────────────────────
+   CONSTANTS
+────────────────────────────────────── */
+const R=5,C=5;
+const isSZ=(r,c)=>r>=1&&r<=3&&c>=1&&c<=3;
+
+const ZN=[
+  ['高外遠','高外','高め','高内','高内遠'],
+  ['外高','外高中','高中','内高中','内高'],
+  ['外','外中','真中','内中','内'],
+  ['外低中','外低中','低中','内低中','内低'],
+  ['低外遠','低外','低め','低内','低内遠'],
+];
+
+const TYPES=['直球','スライダー','カーブ','チェンジアップ','フォーク','カットボール','シュート','ツーシーム','シンカー','スプリット'];
+const TCOLORS=['#fb923c','#38bdf8','#4ade80','#c084fc','#fbbf24','#f472b6','#34d399','#60a5fa','#a78bfa','#86efac'];
+const RL={S:'ストライク',B:'ボール',F:'ファウル',H:'安打',O:'アウト',W:'四球/死球'};
+const DIRS=['左翼','左中','中堅','右中','右翼','三塁側','投手前','一塁側'];
+const BAT_TYPES=['ゴロ','フライ','ライナー','バント'];
+const FIELD_COORDS={'左翼':[28,72],'左中':[60,34],'中堅':[90,22],'右中':[120,34],'右翼':[152,72],'三塁側':[26,128],'投手前':[90,112],'一塁側':[154,128]};
+
+/* ──────────────────────────────────────
+   STATE
+────────────────────────────────────── */
+let S={
+  abs:[],
+  cur:0,
+  sel:{setup:null,type:null,pitch:null,result:null,battedDir:null,battedType:null},
+  balls:0,strikes:0,outs:0,
+};
+
+/* ──────────────────────────────────────
+   LOCAL STORAGE 自動保存
+────────────────────────────────────── */
+const SAVE_KEY='pitchChartData_v3';
+
+function saveData(){
+  try{
+    const innings=[];
+    for(let i=1;i<=9;i++) innings.push(document.getElementById('inn'+i)?.textContent||'-');
+    const payload={
+      abs:S.abs, cur:S.cur, balls:S.balls, strikes:S.strikes, outs:S.outs,
+      innings,
+      teamA:document.getElementById('teamA')?.value||'',
+      teamB:document.getElementById('teamB')?.value||'',
+      gameDate:document.getElementById('gameDate')?.value||'',
+      pitcherName:document.getElementById('pitcherName')?.value||'',
+      pitcherHand:document.getElementById('pitcherHand')?.value||'R',
+      savedAt:new Date().toLocaleTimeString('ja-JP'),
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+    updateSaveIndicator(payload.savedAt);
+  }catch(e){ console.warn('Save failed',e); }
+}
+
+function loadData(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw) return false;
+    const d=JSON.parse(raw);
+    S.abs=d.abs||[];
+    S.cur=d.cur||0;
+    S.balls=d.balls||0;
+    S.strikes=d.strikes||0;
+    S.outs=d.outs||0;
+    // ヘッダー入力値を復元
+    setTimeout(()=>{
+      if(d.teamA) document.getElementById('teamA').value=d.teamA;
+      if(d.teamB) document.getElementById('teamB').value=d.teamB;
+      if(d.gameDate) document.getElementById('gameDate').value=d.gameDate;
+      if(d.pitcherName) document.getElementById('pitcherName').value=d.pitcherName;
+      if(d.pitcherHand) document.getElementById('pitcherHand').value=d.pitcherHand;
+      // スコアボード
+      if(d.innings) d.innings.forEach((v,i)=>{ const el=document.getElementById('inn'+(i+1)); if(el)el.textContent=v; });
+      recalcSB();
+      updateSaveIndicator(d.savedAt+' の記録を復元');
+    },100);
+    return true;
+  }catch(e){ console.warn('Load failed',e); return false; }
+}
+
+function clearData(){
+  if(!confirm('現在の記録をすべて削除しますか？\n（この操作は元に戻せません）')) return;
+  localStorage.removeItem(SAVE_KEY);
+  S.abs=[]; S.cur=0; S.balls=0; S.strikes=0; S.outs=0;
+  for(let i=1;i<=9;i++){ const el=document.getElementById('inn'+i); if(el)el.textContent='-'; }
+  document.getElementById('innT').textContent='0';
+  addAB();
+  toast('記録をリセットしました');
+}
+
+function updateSaveIndicator(txt){
+  const el=document.getElementById('saveIndicator');
+  if(el){ el.textContent='💾 '+txt; el.style.opacity='1'; setTimeout(()=>el.style.opacity='0.5',2000); }
+}
+
+/* ──────────────────────────────────────
+   INIT
+────────────────────────────────────── */
+function init(){
+  buildSB();
+  buildZoneGrid('setupGrid','setup');
+  buildZoneGrid('pitchGrid','pitch');
+  buildPitchTypeBtns();
+  buildHmaps();
+  const restored=loadData();
+  if(restored && S.abs.length>0){
+    renderABList();
+    renderCurrentAB();
+    updateDots();
+    updateStats();
+    toast('前回の記録を復元しました');
+  } else {
+    addAB();
+  }
+}
+
+function buildSB(){
+  const sb=document.getElementById('sb');
+  for(let i=1;i<=9;i++){
+    const d=document.createElement('div');
+    d.className='inn-col';
+    d.innerHTML=`<span class="inn-lbl">${i}</span><div class="inn-val" id="inn${i}" onclick="setInn(${i})">-</div>`;
+    sb.appendChild(d);
+  }
+  const t=document.createElement('div');
+  t.className='inn-col';
+  t.innerHTML=`<span class="inn-lbl">計</span><div class="inn-val" id="innT" style="color:var(--yellow)">0</div>`;
+  sb.appendChild(t);
+}
+function setInn(n){
+  const v=prompt(`${n}回の得点:`);
+  if(v!==null&&!isNaN(v)){document.getElementById('inn'+n).textContent=v;recalcSB();saveData();}
+}
+function recalcSB(){
+  let t=0;
+  for(let i=1;i<=9;i++){const v=parseInt(document.getElementById('inn'+i).textContent);if(!isNaN(v))t+=v;}
+  document.getElementById('innT').textContent=t;
+}
+
+function buildZoneGrid(id,mode){
+  const g=document.getElementById(id);g.innerHTML='';
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+    const el=document.createElement('div');
+    el.className='zcell '+(isSZ(r,c)?'sz':'bz');
+    el.dataset.r=r;el.dataset.c=c;el.title=ZN[r][c];
+    el.onclick=()=>selZone(mode,r,c,el);
+    g.appendChild(el);
+  }
+}
+
+function buildPitchTypeBtns(){
+  const g=document.getElementById('ptGrid');g.innerHTML='';
+  TYPES.forEach(t=>{
+    const b=document.createElement('button');
+    b.className='pt-btn';b.textContent=t;
+    b.onclick=()=>selType(t,b);
+    g.appendChild(b);
+  });
+}
+
+function buildHmaps(){
+  ['pitchHmap','missHmap','setupHmap'].forEach(id=>{
+    const g=document.getElementById(id);if(!g)return;g.innerHTML='';
+    for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+      const d=document.createElement('div');
+      d.className='hcell';d.id=`${id}-${r}-${c}`;d.title=ZN[r][c];
+      d.style.background=isSZ(r,c)?'rgba(56,189,248,0.07)':'rgba(255,255,255,0.03)';
+      d.style.border=isSZ(r,c)?'1px solid rgba(56,189,248,0.2)':'1px solid rgba(255,255,255,0.07)';
+      g.appendChild(d);
+    }
+  });
+}
+
+/* ──────────────────────────────────────
+   AT BAT
+────────────────────────────────────── */
+function addAB(){
+  S.abs.push({id:Date.now(),num:S.abs.length+1,batter:'',hand:'R',catcher:'',pitches:[],finalResult:null});
+  S.cur=S.abs.length-1;
+  resetCount();renderABList();renderCurrentAB();
+  if(S.abs.length>1) saveData();
+}
+function selAB(idx){S.cur=idx;recalcCount();renderABList();renderCurrentAB();}
+function resetCount(){S.balls=0;S.strikes=0;updateDots();}
+function recalcCount(){
+  S.balls=0;S.strikes=0;
+  const ab=S.abs[S.cur];if(!ab)return;
+  ab.pitches.forEach(p=>{
+    if(p.result==='B'){if(S.balls<3)S.balls++;else{S.balls=0;S.strikes=0;}}
+    else if(p.result==='S'){if(S.strikes<2)S.strikes++;else{S.balls=0;S.strikes=0;}}
+    else if(p.result==='F'&&S.strikes<2)S.strikes++;
+  });
+  updateDots();
+}
+function renderABList(){
+  const el=document.getElementById('abList');el.innerHTML='';
+  S.abs.forEach((ab,i)=>{
+    const d=document.createElement('div');
+    d.className='ab-card'+(i===S.cur?' act':'');
+    d.onclick=()=>selAB(i);
+    const bdg=ab.pitches.map(p=>`<span class="badge b-${p.result}">${p.result}</span>`).join('');
+    d.innerHTML=`<div class="ab-top"><div class="ab-num">${ab.num}</div>
+      <div><div class="ab-name">${ab.batter||'（未入力）'}${ab.catcher?` <span style="font-size:10px;color:var(--accent);font-weight:400;">🧤${ab.catcher}</span>`:''}</div>
+      <div class="ab-badges">${bdg||'<span style="color:var(--muted)">投球なし</span>'}</div></div>
+      <div style="margin-left:auto;font-family:'Oswald',sans-serif;font-size:11px;color:var(--muted)">${ab.pitches.length}球</div>
+    </div>`;
+    el.appendChild(d);
+  });
+}
+function renderCurrentAB(){
+  const ab=S.abs[S.cur];if(!ab)return;
+  document.getElementById('abNum').textContent=ab.num;
+  document.getElementById('batterName').value=ab.batter;
+  document.getElementById('catcherNameAB').value=ab.catcher||'';
+  document.getElementById('hR').classList.toggle('on',ab.hand==='R');
+  document.getElementById('hL').classList.toggle('on',ab.hand==='L');
+  renderLog();
+}
+function syncName(){const ab=S.abs[S.cur];if(ab){ab.batter=document.getElementById('batterName').value;renderABList();saveData();}}
+function syncCatcher(){const ab=S.abs[S.cur];if(ab){ab.catcher=document.getElementById('catcherNameAB').value;renderABList();saveData();}}
+function setHand(h){const ab=S.abs[S.cur];if(!ab)return;ab.hand=h;document.getElementById('hR').classList.toggle('on',h==='R');document.getElementById('hL').classList.toggle('on',h==='L');saveData();}
+
+/* ──────────────────────────────────────
+   SELECTION
+────────────────────────────────────── */
+function selZone(mode,r,c,el){
+  S.sel[mode]={r,c,label:ZN[r][c],sz:isSZ(r,c)};
+  const gid=mode==='setup'?'setupGrid':'pitchGrid';
+  const cls='sel-'+(mode==='setup'?'s':'p');
+  document.querySelectorAll(`#${gid} .zcell`).forEach(x=>x.classList.remove(cls));
+  el.classList.add(cls);
+}
+function selType(t,btn){
+  S.sel.type=t;
+  document.querySelectorAll('.pt-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+function selRes(r){
+  S.sel.result=r;
+  document.querySelectorAll('.rbtn').forEach(b=>b.classList.remove('on'));
+  document.querySelector('.r-'+r)?.classList.add('on');
+  // 安打・アウト時に打球パネル表示
+  const panel=document.getElementById('battedPanel');
+  if(['H','O'].includes(r)) panel.classList.add('show');
+  else panel.classList.remove('show');
+}
+function selDir(dir){
+  S.sel.battedDir=dir;
+  updateSelBattedSummary();
+  // SVGマーカー更新
+  const coords=FIELD_COORDS[dir];
+  if(coords){
+    const mk=document.getElementById('fieldMarker');
+    const md=document.getElementById('fieldMarkerDot');
+    if(mk){mk.setAttribute('cx',coords[0]);mk.setAttribute('cy',coords[1]);}
+    if(md){md.setAttribute('cx',coords[0]);md.setAttribute('cy',coords[1]);}
+    const lbl=document.getElementById('fieldDirLabel');
+    if(lbl)lbl.textContent=dir;
+  }
+  // ゾーンハイライト
+  document.querySelectorAll('.fzone').forEach(el=>{
+    const idMap={'左翼':'LF','左中':'LC','中堅':'CF','右中':'RC','右翼':'RF','三塁側':'3B','投手前':'P','一塁側':'1B'};
+    const isThis=el.id==='fz-'+idMap[dir];
+    el.style.fill=isThis?'rgba(74,222,128,0.18)':'transparent';
+  });
+}
+function selBatType(t){
+  S.sel.battedType=t;
+  document.querySelectorAll('.bat-type-btn').forEach(b=>b.classList.toggle('on',b.textContent.includes(t)));
+  updateSelBattedSummary();
+}
+function selFieldZone(dir, code){
+  selDir(dir);
+}
+function updateSelBattedSummary(){
+  const el=document.getElementById('selBattedSummary');
+  if(!el)return;
+  const parts=[];
+  if(S.sel.battedDir)parts.push(S.sel.battedDir);
+  if(S.sel.battedType)parts.push(S.sel.battedType);
+  el.textContent=parts.length?'✔ '+parts.join(' ／ '):'';
+}
+
+/* ──────────────────────────────────────
+   RECORD
+────────────────────────────────────── */
+function record(){
+  const {setup,type,pitch,result}=S.sel;
+  if(!setup){toast('① 捕手の構えを選択してください');return;}
+  if(!type){toast('② 球種を選択してください');return;}
+  if(!pitch){toast('③ 実際のコースを選択してください');return;}
+  if(!result){toast('④ 結果を選択してください');return;}
+
+  const ab=S.abs[S.cur];if(!ab)return;
+  const matched=setup.r===pitch.r&&setup.c===pitch.c;
+  const {battedDir,battedType}=S.sel;
+
+  const p={num:ab.pitches.length+1,count:`${S.balls}-${S.strikes}`,type,setup,pitch,result,matched,
+    battedDir:battedDir||null, battedType:battedType||null, ts:Date.now()};
+  ab.pitches.push(p);
+
+  // count update
+  if(result==='B'){if(S.balls<3)S.balls++;else{S.balls=0;S.strikes=0;}}
+  else if(result==='S'){if(S.strikes<2)S.strikes++;else{S.balls=0;S.strikes=0;}}
+  else if(result==='F'){if(S.strikes<2)S.strikes++;}
+  else if(['H','O','W'].includes(result)){ab.finalResult=result;S.balls=0;S.strikes=0;}
+
+  updateDots();renderLog();renderABList();updateStats();
+  saveData();
+
+  // reset ui
+  S.sel={setup:null,type:null,pitch:null,result:null,battedDir:null,battedType:null};
+  document.querySelectorAll('.zcell').forEach(x=>x.classList.remove('sel-s','sel-p'));
+  document.querySelectorAll('.pt-btn').forEach(b=>b.classList.remove('on'));
+  document.querySelectorAll('.rbtn').forEach(b=>b.classList.remove('on'));
+  document.querySelectorAll('.dir-btn').forEach(b=>b.classList.remove('on'));
+  document.querySelectorAll('.bat-type-btn').forEach(b=>b.classList.remove('on'));
+  const mk=document.getElementById('fieldMarker');if(mk){mk.setAttribute('cx','-99');mk.setAttribute('cy','-99');}
+  const lbl=document.getElementById('fieldDirLabel');if(lbl)lbl.textContent='';
+  document.getElementById('battedPanel').classList.remove('show');
+
+  const dirStr=battedDir?` → ${battedDir}${battedType?'('+battedType+')':''}` :'';
+  toast(`${matched?'✅ 構え通り':'⚠️ コースズレ'}　${type} → ${RL[result]}${dirStr}`);
+}
+
+function renderLog(){
+  const ab=S.abs[S.cur];
+  const tb=document.getElementById('pitchLog');
+  if(!ab){tb.innerHTML='';return;}
+  tb.innerHTML=ab.pitches.map((p,i)=>`<tr>
+    <td class="pn">${p.num}</td>
+    <td style="font-family:'Oswald',sans-serif;color:var(--muted)">${p.count}</td>
+    <td>${p.type}</td>
+    <td style="font-size:10px;color:var(--purple)">${p.setup?.label||'-'}</td>
+    <td style="font-size:10px;color:var(--orange)">${p.pitch?.label||'-'}</td>
+    <td class="${p.matched?'match-ok':'match-ng'}">${p.matched?'✔':'✘'}</td>
+    <td><span class="badge b-${p.result}">${RL[p.result]}</span></td>
+    <td style="font-size:10px;color:var(--green)">${p.battedDir||''}${p.battedType?' '+p.battedType:''}</td>
+    <td><button class="del" onclick="delPitch(${i})">✕</button></td>
+  </tr>`).join('');
+}
+
+function delPitch(i){
+  const ab=S.abs[S.cur];if(!ab)return;
+  ab.pitches.splice(i,1);ab.pitches.forEach((p,j)=>p.num=j+1);
+  recalcCount();renderLog();renderABList();updateStats();saveData();
+}
+
+/* ──────────────────────────────────────
+   COUNT DOTS
+────────────────────────────────────── */
+function updateDots(){
+  const mk=(id,tot,fill,cls)=>{
+    document.getElementById(id).innerHTML=Array(tot).fill(0).map((_,i)=>`<div class="cdot ${i<fill?'on-'+cls:''}"></div>`).join('');
+  };
+  mk('bDots',4,S.balls,'B');
+  mk('sDots',3,S.strikes,'S');
+  mk('oDots',3,S.outs,'O');
+}
+
+/* ──────────────────────────────────────
+   STATS
+────────────────────────────────────── */
+function all(){return S.abs.flatMap(ab=>ab.pitches);}
+
+function updateStats(){
+  const ps=all();
+  const tot=ps.length;
+  const stk=ps.filter(p=>['S','F','H','O'].includes(p.result)).length;
+  const hits=ps.filter(p=>p.result==='H').length;
+  const outs=ps.filter(p=>p.result==='O').length;
+  const walks=ps.filter(p=>p.result==='W').length;
+  const withB=ps.filter(p=>p.setup&&p.pitch);
+  const mCnt=withB.filter(p=>p.matched).length;
+  const ngCnt=withB.length-mCnt;
+  const pct=withB.length?Math.round(mCnt/withB.length*100):null;
+
+  set('sTotal',tot);
+  set('sStR',tot?(stk/tot*100).toFixed(1)+'%':'-');
+  const cabs=S.abs.filter(ab=>ab.pitches.length>0);
+  set('sAvg',cabs.length?(tot/cabs.length).toFixed(1):'-');
+  set('matchPct',pct!==null?pct+'%':'-');
+  set('matchCnt',mCnt);
+  set('missCnt',ngCnt);
+  set('sHits',hits);set('sOuts',outs);set('sWalks',walks);
+
+  const mpEl=document.getElementById('matchPct');
+  if(pct!==null)mpEl.style.color=pct>=70?'var(--green)':pct>=50?'var(--yellow)':'var(--red)';
+
+  updateTypeMiss(ps, withB);
+  updateZoneStats(ps, withB);
+  updateSetupZoneAnalysis(ps);
+  updateBattedAnalysis(ps);
+  updateCatcherAnalysis(ps);
+}
+
+function set(id,v){const el=document.getElementById(id);if(el)el.textContent=v;}
+
+/* 球種ズレ分析 */
+function updateTypeMiss(ps, withB){
+  // 球種ごと集計
+  const byType={};
+  withB.forEach(p=>{
+    if(!byType[p.type])byType[p.type]={t:0,miss:0};
+    byType[p.type].t++;
+    if(!p.matched)byType[p.type].miss++;
+  });
+  const sorted=Object.entries(byType).sort((a,b)=>b[1].miss/b[1].t - a[1].miss/a[1].t);
+  const maxMiss=sorted.reduce((mx,[,d])=>Math.max(mx,d.miss/d.t),0)||1;
+
+  // バーチャート
+  const distEl=document.getElementById('typeMissDist');
+  distEl.innerHTML=sorted.map(([t,d])=>{
+    const pct=Math.round(d.miss/d.t*100);
+    const col=pct>=50?'var(--red)':pct>=30?'var(--yellow)':'var(--green)';
+    return `<div class="br">
+      <span class="bl">${t}</span>
+      <div class="bb"><div class="bf" style="width:${d.miss/d.t/maxMiss*100}%;background:${col}"></div></div>
+      <span class="bc">${pct}%</span>
+    </div>`;
+  }).join('')||'<span style="font-size:11px;color:var(--muted)">データなし</span>';
+
+  // 詳細テーブル
+  const tbody=document.getElementById('typeMissBody');
+  tbody.innerHTML=sorted.map(([t,d])=>`<tr>
+    <td>${t}</td>
+    <td style="font-family:'Oswald',sans-serif">${d.t}</td>
+    <td style="font-family:'Oswald',sans-serif;color:var(--red)">${d.miss}</td>
+    <td><div class="miss-bar" style="width:${Math.round(d.miss/d.t*80)}px"></div></td>
+  </tr>`).join('')||'<tr><td colspan="4" style="color:var(--muted)">なし</td></tr>';
+
+  // ズレた時の球種分布
+  const missPs=withB.filter(p=>!p.matched);
+  const missByType={};
+  missPs.forEach(p=>{ missByType[p.type]=(missByType[p.type]||0)+1; });
+  const mSorted=Object.entries(missByType).sort((a,b)=>b[1]-a[1]);
+  const mMax=mSorted[0]?.[1]||1;
+  const mtEl=document.getElementById('missTypeDist');
+  mtEl.innerHTML=mSorted.map(([t,cnt],i)=>`<div class="br">
+    <span class="bl">${t}</span>
+    <div class="bb"><div class="bf" style="width:${cnt/mMax*100}%;background:${TCOLORS[TYPES.indexOf(t)%TCOLORS.length]}"></div></div>
+    <span class="bc">${cnt}</span>
+  </div>`).join('')||'<span style="font-size:11px;color:var(--muted)">ズレなし</span>';
+}
+
+/* ゾーン統計 */
+function updateZoneStats(ps, withB){
+  // 投球コース分布
+  const pCnt={};
+  ps.forEach(p=>{if(p.pitch){const k=`${p.pitch.r}-${p.pitch.c}`;pCnt[k]=(pCnt[k]||0)+1;}});
+  const pMax=Math.max(...Object.values(pCnt),1);
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+    const el=document.getElementById(`pitchHmap-${r}-${c}`);if(!el)continue;
+    const cnt=pCnt[`${r}-${c}`]||0;
+    const a=cnt?cnt/pMax*0.8+0.1:0;
+    el.style.background=cnt?`rgba(251,146,60,${a})`:(isSZ(r,c)?'rgba(56,189,248,0.07)':'rgba(255,255,255,0.03)');
+    el.textContent=cnt||'';
+    el.style.color=a>0.5?'#000':'rgba(255,255,255,0.4)';
+  }
+
+  // ズレ着地コース
+  const mCnt={};
+  withB.filter(p=>!p.matched).forEach(p=>{if(p.pitch){const k=`${p.pitch.r}-${p.pitch.c}`;mCnt[k]=(mCnt[k]||0)+1;}});
+  const mMax=Math.max(...Object.values(mCnt),1);
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+    const el=document.getElementById(`missHmap-${r}-${c}`);if(!el)continue;
+    const cnt=mCnt[`${r}-${c}`]||0;
+    const a=cnt?cnt/mMax*0.8+0.1:0;
+    el.style.background=cnt?`rgba(248,113,113,${a})`:(isSZ(r,c)?'rgba(56,189,248,0.07)':'rgba(255,255,255,0.03)');
+    el.textContent=cnt||'';
+    el.style.color=a>0.5?'#fff':'rgba(255,255,255,0.4)';
+  }
+}
+
+/* 構えコース×球種クロス集計 */
+function updateSetupZoneAnalysis(ps){
+  const withSetup=ps.filter(p=>p.setup);
+
+  // 全コース集計（構え回数ヒートマップ）
+  const zoneCnt={};
+  withSetup.forEach(p=>{
+    const k=`${p.setup.r}-${p.setup.c}`;
+    zoneCnt[k]=(zoneCnt[k]||0)+1;
+  });
+  const zMax=Math.max(...Object.values(zoneCnt),1);
+
+  // ヒートマップ更新
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+    const el=document.getElementById(`setupHmap-${r}-${c}`);if(!el)continue;
+    const cnt=zoneCnt[`${r}-${c}`]||0;
+    const a=cnt?cnt/zMax*0.8+0.1:0;
+    el.style.background=cnt?`rgba(192,132,252,${a})`:(isSZ(r,c)?'rgba(56,189,248,0.07)':'rgba(255,255,255,0.03)');
+    el.textContent=cnt||'';
+    el.style.color=a>0.5?'#fff':'rgba(255,255,255,0.3)';
+  }
+
+  // TOP5コース
+  const top5=Object.entries(zoneCnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const t5max=top5[0]?.[1]||1;
+  const t5El=document.getElementById('setupTopZones');
+  t5El.innerHTML=top5.map(([k,cnt])=>{
+    const [r,c]=k.split('-').map(Number);
+    return `<div class="br">
+      <span class="bl" style="font-size:10px">${ZN[r][c]}</span>
+      <div class="bb"><div class="bf" style="width:${cnt/t5max*100}%;background:var(--purple)"></div></div>
+      <span class="bc">${cnt}</span>
+    </div>`;
+  }).join('')||'<span style="font-size:11px;color:var(--muted)">データなし</span>';
+
+  // ゾーン選択ミニグリッド（タップで球種内訳を表示）
+  const sel=document.getElementById('setupZoneSelector');
+  sel.innerHTML='';
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+    const cnt=zoneCnt[`${r}-${c}`]||0;
+    const a=cnt?cnt/zMax*0.75+0.1:0;
+    const d=document.createElement('div');
+    d.style.cssText=`aspect-ratio:1;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:'Oswald',sans-serif;transition:all .15s;`;
+    d.style.background=cnt?`rgba(192,132,252,${a})`:(isSZ(r,c)?'rgba(56,189,248,0.07)':'rgba(255,255,255,0.03)');
+    d.style.border=isSZ(r,c)?'1px solid rgba(56,189,248,0.25)':'1px solid rgba(255,255,255,0.07)';
+    d.style.color=a>0.5?'#fff':'rgba(255,255,255,0.3)';
+    d.textContent=cnt||'';
+    d.title=ZN[r][c];
+    d.onclick=()=>{selectedSetupZone={r,c};updateSetupZoneAnalysis(all());};
+    if(selectedSetupZone&&selectedSetupZone.r===r&&selectedSetupZone.c===c){
+      d.style.outline='2px solid var(--purple)';
+      d.style.outlineOffset='1px';
+    }
+    sel.appendChild(d);
+  }
+
+  // 選択中のコースの詳細を再描画
+  if(selectedSetupZone) showSetupZoneDetail(selectedSetupZone.r,selectedSetupZone.c,withSetup);
+  else{
+    document.getElementById('setupTypeDist').innerHTML='<span style="font-size:11px;color:var(--muted)">上のグリッドのコースをタップしてください</span>';
+  }
+}
+
+function showSetupZoneDetail(r,c,withSetup){
+  selectedSetupZone={r,c};
+  const zPs=withSetup.filter(p=>p.setup.r===r&&p.setup.c===c);
+  document.getElementById('setupZoneName').textContent=
+    `📍 ${ZN[r][c]}（${isSZ(r,c)?'ストライクゾーン':'ボールゾーン'}）　${zPs.length}球`;
+
+  // 球種集計
+  const byType={};
+  zPs.forEach(p=>{ byType[p.type]=(byType[p.type]||0)+1; });
+  const sorted=Object.entries(byType).sort((a,b)=>b[1]-a[1]);
+  const tMax=sorted[0]?.[1]||1;
+
+  const el=document.getElementById('setupTypeDist');
+  if(!sorted.length){el.innerHTML='<span style="font-size:11px;color:var(--muted)">このコースへの構えなし</span>';return;}
+  el.innerHTML=sorted.map(([t,cnt])=>{
+    const ti=TYPES.indexOf(t);
+    const col=TCOLORS[ti>=0?ti:0];
+    const pct=Math.round(cnt/zPs.length*100);
+    return `<div class="br">
+      <span class="bl" style="font-size:11px">${t}</span>
+      <div class="bb"><div class="bf" style="width:${cnt/tMax*100}%;background:${col}"></div></div>
+      <span class="bc" style="width:36px;text-align:right">${cnt}球 ${pct}%</span>
+    </div>`;
+  }).join('');
+}
+
+/* 打球方向・種別分析 */
+let selectedBatter='全打者';
+const BTCOL={ゴロ:'var(--yellow)',フライ:'var(--accent)',ライナー:'var(--green)',バント:'var(--purple)'};
+
+function updateBattedAnalysis(ps){
+  const batted=ps.filter(p=>p.battedDir);
+  const batters=[...new Set(S.abs.map(ab=>ab.batter).filter(b=>b))];
+
+  // 打者フィルターボタン
+  const filterEl=document.getElementById('batterFilterBtns');
+  if(filterEl){
+    filterEl.innerHTML=['全打者',...batters].map(name=>`
+      <button onclick="selectBatterFilter('${name}')"
+        style="padding:5px 10px;border-radius:6px;border:1px solid ${name===selectedBatter?'var(--accent)':'var(--border)'};
+        background:${name===selectedBatter?'rgba(56,189,248,0.2)':'rgba(255,255,255,0.04)'};
+        color:${name===selectedBatter?'var(--accent)':'var(--muted)'};
+        font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">${name}</button>
+    `).join('');
+  }
+
+  // フィルター適用
+  const filtered=selectedBatter==='全打者' ? batted
+    : batted.filter(p=>{ const ab=S.abs.find(a=>a.pitches.includes(p)); return ab?.batter===selectedBatter; });
+
+  const mapLbl=document.getElementById('battedMapLabel');
+  if(mapLbl)mapLbl.textContent=selectedBatter+(filtered.length?`　${filtered.length}打球`:'');
+
+  // SVGグラウンド図カウント
+  const dirCnt={};
+  filtered.forEach(p=>{ dirCnt[p.battedDir]=(dirCnt[p.battedDir]||0)+1; });
+  const dMax=Math.max(...Object.values(dirCnt),1);
+  DIRS.forEach(d=>{
+    const el=document.getElementById('fs-'+d);if(!el)return;
+    const cnt=dirCnt[d]||0;
+    el.textContent=cnt||'';
+    const a=cnt?0.5+cnt/dMax*0.5:0.15;
+    const isIF=['三塁側','投手前','一塁側'].includes(d);
+    el.setAttribute('fill',cnt?(isIF?`rgba(251,191,36,${a})`:`rgba(74,222,128,${a})`):(isIF?'rgba(251,191,36,0.15)':'rgba(74,222,128,0.15)'));
+    el.style.fontSize=cnt?`${Math.max(11,Math.min(18,11+cnt/dMax*7))}px`:'11px';
+  });
+
+  // 打球種別サマリー
+  const typeCnt={};
+  filtered.forEach(p=>{ if(p.battedType)typeCnt[p.battedType]=(typeCnt[p.battedType]||0)+1; });
+  const tTotal=Object.values(typeCnt).reduce((a,b)=>a+b,0);
+  const typeEl=document.getElementById('battedTypeSummary');
+  if(typeEl){
+    typeEl.innerHTML=BAT_TYPES.map(t=>{
+      const cnt=typeCnt[t]||0;
+      const pct=tTotal?Math.round(cnt/tTotal*100):0;
+      return `<div style="display:flex;flex-direction:column;gap:2px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;">
+          <span style="color:${BTCOL[t]};font-weight:700">${t}</span>
+          <span style="font-family:'Oswald',sans-serif;color:var(--muted)">${cnt}球 ${pct}%</span>
+        </div>
+        <div style="height:5px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;">
+          <div style="height:100%;width:${tTotal?cnt/tTotal*100:0}%;background:${BTCOL[t]};border-radius:3px;transition:width .4s;"></div>
+        </div>
+      </div>`;
+    }).join('')||'<span style="font-size:11px;color:var(--muted)">データなし</span>';
+  }
+
+  // 打者別詳細カード
+  const detailEl=document.getElementById('batterBattedDetail');
+  if(!detailEl)return;
+  if(!batters.length){detailEl.innerHTML='<span style="font-size:11px;color:var(--muted)">打者名を入力してください</span>';return;}
+
+  detailEl.innerHTML=batters.map(name=>{
+    const abps=S.abs.filter(ab=>ab.batter===name).flatMap(ab=>ab.pitches);
+    const bps=abps.filter(p=>p.battedDir);
+    if(!bps.length)return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;opacity:.5;font-size:11px;color:var(--muted);">${name}：打球記録なし</div>`;
+
+    const bDirCnt={};
+    bps.forEach(p=>{ bDirCnt[p.battedDir]=(bDirCnt[p.battedDir]||0)+1; });
+    const bTypeCnt={};
+    bps.forEach(p=>{ if(p.battedType)bTypeCnt[p.battedType]=(bTypeCnt[p.battedType]||0)+1; });
+    const topDirs=Object.entries(bDirCnt).sort((a,b)=>b[1]-a[1]);
+    const topTypes=Object.entries(bTypeCnt).sort((a,b)=>b[1]-a[1]);
+    const bMax=topDirs[0]?.[1]||1;
+
+    const hand=S.abs.find(ab=>ab.batter===name)?.hand||'R';
+    const pullDirs=hand==='R'?['左翼','左中','三塁側']:['右翼','右中','一塁側'];
+    const opposDirs=hand==='R'?['右翼','右中','一塁側']:['左翼','左中','三塁側'];
+    const pullCnt=bps.filter(p=>pullDirs.includes(p.battedDir)).length;
+    const opposCnt=bps.filter(p=>opposDirs.includes(p.battedDir)).length;
+    const tendency=pullCnt>opposCnt?'🔴 引っ張り':opposCnt>pullCnt?'🔵 逆方向':'⚪ センター';
+
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:rgba(255,255,255,0.02);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-weight:700;font-size:13px;">${name}　<span style="font-size:10px;color:var(--muted);font-weight:400;">${hand==='R'?'右打':'左打'} / ${bps.length}打球</span></span>
+        <span style="font-size:11px;font-weight:700;">${tendency}</span>
+      </div>
+      <div style="margin-bottom:7px;">
+        ${topDirs.map(([d,c])=>`
+          <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
+            <span style="font-size:10px;width:46px;color:${['三塁側','投手前','一塁側'].includes(d)?'var(--yellow)':'var(--green)'}">${d}</span>
+            <div style="flex:1;height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:${c/bMax*100}%;background:${['三塁側','投手前','一塁側'].includes(d)?'var(--yellow)':'var(--green)'};border-radius:3px;"></div>
+            </div>
+            <span style="font-size:10px;font-family:'Oswald',sans-serif;color:var(--muted);width:14px;text-align:right;">${c}</span>
+          </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;">
+        ${topTypes.map(([t,c])=>`<span style="font-size:10px;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.07);color:${BTCOL[t]};font-weight:700;">${t} ${c}</span>`).join('')}
+        ${topTypes.length===0?'<span style="font-size:10px;color:var(--muted)">打球種別未記録</span>':''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectBatterFilter(name){
+  selectedBatter=name;
+  updateBattedAnalysis(all());
+}
+
+/* 捕手別配球傾向 */
+function updateCatcherAnalysis(ps){
+  const el=document.getElementById('catcherSummary');
+  if(!el)return;
+
+  // 打席ごとのキャッチャー名をピッチに紐付け
+  const catcherMap={};
+  S.abs.forEach(ab=>{
+    if(!ab.catcher)return;
+    ab.pitches.forEach(p=>{ catcherMap[p.ts]=ab.catcher; });
+  });
+
+  const catchers=[...new Set(S.abs.map(ab=>ab.catcher).filter(c=>c))];
+  if(!catchers.length){
+    el.innerHTML='<span style="font-size:11px;color:var(--muted)">打席に捕手名を入力してください</span>';
+    return;
+  }
+
+  el.innerHTML=catchers.map(catcher=>{
+    const cps=ps.filter(p=>catcherMap[p.ts]===catcher);
+    const withB=cps.filter(p=>p.setup&&p.pitch);
+    const matched=withB.filter(p=>p.matched).length;
+    const matchPct=withB.length?Math.round(matched/withB.length*100):null;
+    const stk=cps.filter(p=>['S','F','H','O'].includes(p.result)).length;
+    const strikePct=cps.length?Math.round(stk/cps.length*100):0;
+
+    // 多用球種 TOP3
+    const typeCnt={};
+    cps.forEach(p=>{typeCnt[p.type]=(typeCnt[p.type]||0)+1;});
+    const topTypes=Object.entries(typeCnt).sort((a,b)=>b[1]-a[1]).slice(0,3);
+
+    // 多用コース TOP3
+    const zoneCnt={};
+    cps.filter(p=>p.setup).forEach(p=>{const k=`${p.setup.r}-${p.setup.c}`;zoneCnt[k]=(zoneCnt[k]||0)+1;});
+    const topZones=Object.entries(zoneCnt).sort((a,b)=>b[1]-a[1]).slice(0,3)
+      .map(([k])=>{const[r,c]=k.split('-').map(Number);return ZN[r][c];});
+
+    const matchCol=matchPct!==null?(matchPct>=70?'var(--green)':matchPct>=50?'var(--yellow)':'var(--red)'):'var(--muted)';
+
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:rgba(56,189,248,0.04);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-weight:700;font-size:13px;">🧤 ${catcher}</span>
+        <span style="font-family:'Oswald',sans-serif;font-size:11px;color:var(--muted)">${cps.length}球</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+        <div style="text-align:center;background:rgba(255,255,255,0.04);border-radius:6px;padding:6px;">
+          <div style="font-family:'Oswald',sans-serif;font-size:20px;font-weight:700;color:${matchCol}">${matchPct!==null?matchPct+'%':'-'}</div>
+          <div style="font-size:9px;color:var(--muted)">構え一致率</div>
+        </div>
+        <div style="text-align:center;background:rgba(255,255,255,0.04);border-radius:6px;padding:6px;">
+          <div style="font-family:'Oswald',sans-serif;font-size:20px;font-weight:700;color:var(--accent)">${strikePct}%</div>
+          <div style="font-size:9px;color:var(--muted)">ストライク率</div>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-family:'Oswald',sans-serif;letter-spacing:1px;">多用球種</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
+        ${topTypes.map(([t,n],i)=>`<span style="padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.07);font-size:11px;font-weight:700;color:${TCOLORS[TYPES.indexOf(t)%TCOLORS.length]}">${t} ${n}球</span>`).join('')}
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-family:'Oswald',sans-serif;letter-spacing:1px;">多用コース（構え）</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">
+        ${topZones.map(z=>`<span style="padding:2px 8px;border-radius:4px;background:rgba(192,132,252,0.15);font-size:11px;font-weight:700;color:var(--purple)">${z}</span>`).join('')}
+        ${topZones.length===0?'<span style="font-size:11px;color:var(--muted)">データなし</span>':''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ──────────────────────────────────────
+   TABS
+────────────────────────────────────── */
+let selectedSetupZone=null;
+
+function switchTab(name){
+  const ns=['sum','setup','type','zone','batted'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',ns[i]===name));
+  document.querySelectorAll('.tp').forEach(p=>p.classList.toggle('on',p.id==='tab-'+name));
+}
+
+/* ──────────────────────────────────────
+   CSV EXPORT
+────────────────────────────────────── */
+function exportCSV(){
+  const rows=S.abs.flatMap(ab=>ab.pitches.map(p=>({
+    打席番号:ab.num,打者:ab.batter,打席方向:ab.hand==='R'?'右打':'左打',
+    捕手:ab.catcher||'',
+    投手:document.getElementById('pitcherName').value,
+    投げ:document.getElementById('pitcherHand').value==='R'?'右投':'左投',
+    投球番号:p.num,カウント:p.count,球種:p.type,
+    構えコース:p.setup?.label||'',構えSZ:p.setup?p.setup.sz?'SZ':'BZ':'',
+    実際コース:p.pitch?.label||'',実際SZ:p.pitch?p.pitch.sz?'SZ':'BZ':'',
+    構え一致:p.matched?'一致':'ズレ',
+    結果:RL[p.result],結果コード:p.result,
+    打球方向:p.battedDir||'',打球種別:p.battedType||'',
+  })));
+  if(!rows.length){toast('記録がありません');return;}
+  const h=Object.keys(rows[0]);
+  const csv='\uFEFF'+[h.join(','),...rows.map(r=>h.map(k=>`"${r[k]}"`).join(','))].join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`pitch_chart_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  toast('CSVエクスポート完了！');
+}
+
+/* ══════════════════════════════════════
+   REPORT GENERATOR
+══════════════════════════════════════ */
+function openReport(){
+  const ps=all();
+  if(!ps.length){toast('記録がありません');return;}
+  document.getElementById('reportInner').innerHTML=buildReportHTML(ps);
+  document.getElementById('reportModal').style.display='block';
+}
+function closeReport(){
+  document.getElementById('reportModal').style.display='none';
+}
+
+function buildReportHTML(ps){
+  const gameDate=document.getElementById('gameDate')?.value||'';
+  const teamA=document.getElementById('teamA')?.value||'';
+  const teamB=document.getElementById('teamB')?.value||'';
+  const pitcher=document.getElementById('pitcherName')?.value||'';
+  const pitcherHand=document.getElementById('pitcherHand')?.value==='R'?'右投':'左投';
+  const catcher=document.getElementById('catcherName')?.value||'';
+  // 打席別キャッチャーも収集
+  const catcherMap={};
+  S.abs.forEach(ab=>{ if(ab.catcher) ab.pitches.forEach(p=>{catcherMap[p.ts]=ab.catcher;}); });
+  const catchers=[...new Set(S.abs.map(ab=>ab.catcher).filter(c=>c))];
+  const batters=[...new Set(S.abs.map(ab=>ab.batter).filter(b=>b))];
+  const withB=ps.filter(p=>p.setup&&p.pitch);
+  const matched=withB.filter(p=>p.matched).length;
+  const matchPct=withB.length?Math.round(matched/withB.length*100):0;
+  const stk=ps.filter(p=>['S','F','H','O'].includes(p.result)).length;
+  const strikePct=ps.length?Math.round(stk/ps.length*100):0;
+  const balls=ps.filter(p=>p.result==='B').length;
+  const hits=ps.filter(p=>p.result==='H').length;
+  const outs=ps.filter(p=>p.result==='O').length;
+  const walks=ps.filter(p=>p.result==='W').length;
+  const cabs=S.abs.filter(ab=>ab.pitches.length>0);
+  const avgPitch=cabs.length?(ps.length/cabs.length).toFixed(1):'-';
+
+  // 球種集計
+  const typeCnt={};
+  ps.forEach(p=>{typeCnt[p.type]=(typeCnt[p.type]||0)+1;});
+  const typeSorted=Object.entries(typeCnt).sort((a,b)=>b[1]-a[1]);
+  const tMax=typeSorted[0]?.[1]||1;
+
+  // 球種別ストライク率
+  const typeSt={};
+  ps.forEach(p=>{
+    if(!typeSt[p.type])typeSt[p.type]={t:0,s:0};
+    typeSt[p.type].t++;
+    if(['S','F','H','O'].includes(p.result))typeSt[p.type].s++;
+  });
+
+  // コース集計（5×5）
+  const zoneCnt={};
+  ps.forEach(p=>{if(p.pitch){const k=`${p.pitch.r}-${p.pitch.c}`;zoneCnt[k]=(zoneCnt[k]||0)+1;}});
+  const zMax=Math.max(...Object.values(zoneCnt),1);
+
+  // 構えコース集計
+  const setupCnt={};
+  ps.forEach(p=>{if(p.setup){const k=`${p.setup.r}-${p.setup.c}`;setupCnt[k]=(setupCnt[k]||0)+1;}});
+  const sMax=Math.max(...Object.values(setupCnt),1);
+
+  // 打者別データ
+  const batterSections=batters.map(name=>buildBatterSection(name,ps)).join('');
+
+  return `
+  <style>
+    @media print {
+      .no-print{display:none!important;}
+      body{margin:0;}
+      .page-break{page-break-before:always;}
+    }
+    .rpt{font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif;color:#1a2035;font-size:13px;line-height:1.5;}
+    .rpt-header{background:linear-gradient(135deg,#0f1b2d,#1a2f4a);color:#fff;padding:28px 32px;}
+    .rpt-title{font-size:24px;font-weight:900;letter-spacing:2px;margin-bottom:6px;}
+    .rpt-sub{font-size:13px;opacity:0.7;display:flex;gap:20px;flex-wrap:wrap;}
+    .rpt-body{padding:24px 32px;}
+    .rpt-section{margin-bottom:28px;}
+    .rpt-section-title{font-size:15px;font-weight:900;color:#0f1b2d;border-left:4px solid #38bdf8;padding-left:10px;margin-bottom:14px;letter-spacing:1px;}
+    .rpt-grid{display:grid;gap:16px;}
+    .rpt-grid-2{grid-template-columns:1fr 1fr;}
+    .rpt-grid-3{grid-template-columns:1fr 1fr 1fr;}
+    .rpt-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;}
+    .rpt-card-title{font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;}
+    .stat-big{font-size:36px;font-weight:900;color:#0f1b2d;line-height:1;}
+    .stat-label{font-size:11px;color:#64748b;margin-top:3px;}
+    .bar-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+    .bar-label{font-size:11px;width:72px;flex-shrink:0;font-weight:700;}
+    .bar-bg{flex:1;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;}
+    .bar-fill{height:100%;border-radius:4px;}
+    .bar-val{font-size:11px;color:#64748b;width:36px;text-align:right;font-weight:700;}
+    .zone-tbl{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;width:100%;}
+    .zone-cell-r{aspect-ratio:1;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;}
+    .badge-r{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;}
+    .divider{border:none;border-top:1px solid #e2e8f0;margin:20px 0;}
+    .batter-card{background:#fff;border:2px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:16px;}
+    .batter-name{font-size:17px;font-weight:900;color:#0f1b2d;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+    .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;}
+    .tag-blue{background:#dbeafe;color:#1d4ed8;}
+    .tag-red{background:#fee2e2;color:#b91c1c;}
+    .tag-green{background:#dcfce7;color:#15803d;}
+    .tag-yellow{background:#fef9c3;color:#854d0e;}
+    .tag-purple{background:#f3e8ff;color:#7e22ce;}
+    table.rpt-tbl{width:100%;border-collapse:collapse;font-size:12px;}
+    table.rpt-tbl th{background:#f1f5f9;padding:6px 8px;text-align:left;font-weight:700;color:#475569;font-size:11px;}
+    table.rpt-tbl td{padding:6px 8px;border-bottom:1px solid #f1f5f9;}
+    .tendency-box{background:#0f1b2d;color:#fff;border-radius:8px;padding:12px 16px;margin-top:8px;font-size:12px;line-height:1.8;}
+    .t-row{display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.08);padding:3px 0;}
+    .t-row:last-child{border-bottom:none;}
+  </style>
+
+  <div class="rpt">
+    <!-- ヘッダー -->
+    <div class="rpt-header">
+      <div class="rpt-title">⚾ ピッチング分析レポート</div>
+      <div class="rpt-sub">
+        ${gameDate?`<span>📅 ${gameDate}</span>`:''}
+        ${teamA&&teamB?`<span>🆚 ${teamA} vs ${teamB}</span>`:''}
+        ${pitcher?`<span>🤾 投手：${pitcher}（${pitcherHand}）</span>`:''}
+        ${catcher?`<span>🧤 捕手：${catcher}</span>`:''}
+        <span>📊 総投球数：${ps.length}球 / ${S.abs.length}打席</span>
+      </div>
+    </div>
+
+    <div class="rpt-body">
+
+      <!-- ① 投球サマリー -->
+      <div class="rpt-section">
+        <div class="rpt-section-title">① 投球サマリー</div>
+        <div class="rpt-grid rpt-grid-3" style="margin-bottom:12px;">
+          ${rCard('総投球数',ps.length+'球')}
+          ${rCard('ストライク率',strikePct+'%',strikePct>=65?'#15803d':strikePct>=55?'#854d0e':'#b91c1c')}
+          ${rCard('構え一致率',matchPct+'%',matchPct>=70?'#15803d':matchPct>=50?'#854d0e':'#b91c1c')}
+        </div>
+        <div class="rpt-grid rpt-grid-3">
+          ${rCard('ボール数',balls+'球')}
+          ${rCard('被安打',hits+'本')}
+          ${rCard('1打席平均',avgPitch+'球')}
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- ② 球種分析 -->
+      <div class="rpt-section">
+        <div class="rpt-section-title">② 球種分析</div>
+        <div class="rpt-grid rpt-grid-2">
+          <div class="rpt-card">
+            <div class="rpt-card-title">球種分布</div>
+            ${typeSorted.map(([t,cnt],i)=>`
+              <div class="bar-row">
+                <span class="bar-label">${t}</span>
+                <div class="bar-bg"><div class="bar-fill" style="width:${cnt/tMax*100}%;background:${TCOLORS[i%TCOLORS.length]}"></div></div>
+                <span class="bar-val">${cnt}球 ${Math.round(cnt/ps.length*100)}%</span>
+              </div>`).join('')}
+          </div>
+          <div class="rpt-card">
+            <div class="rpt-card-title">球種別ストライク率</div>
+            ${typeSorted.map(([t])=>{
+              const d=typeSt[t];
+              const pct=d?Math.round(d.s/d.t*100):0;
+              const col=pct>=65?'#16a34a':pct>=50?'#d97706':'#dc2626';
+              return `<div class="bar-row">
+                <span class="bar-label">${t}</span>
+                <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div>
+                <span class="bar-val" style="color:${col}">${pct}%</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- ③ コース分析 -->
+      <div class="rpt-section">
+        <div class="rpt-section-title">③ コース分析</div>
+        <div class="rpt-grid rpt-grid-2">
+          <div class="rpt-card">
+            <div class="rpt-card-title">投球コース分布（捕手視点）</div>
+            <div style="font-size:9px;color:#94a3b8;display:flex;justify-content:space-between;margin-bottom:4px;"><span>外角</span><span>内角</span></div>
+            <div class="zone-tbl">${buildZoneTable(zoneCnt,zMax,'rgba(251,146,60','#fff')}</div>
+          </div>
+          <div class="rpt-card">
+            <div class="rpt-card-title">構えコース分布</div>
+            <div style="font-size:9px;color:#94a3b8;display:flex;justify-content:space-between;margin-bottom:4px;"><span>外角</span><span>内角</span></div>
+            <div class="zone-tbl">${buildZoneTable(setupCnt,sMax,'rgba(192,132,252','#fff')}</div>
+          </div>
+        </div>
+        <div class="rpt-card" style="margin-top:12px;">
+          <div class="rpt-card-title">構え一致率 詳細</div>
+          <div style="display:flex;gap:20px;align-items:center;">
+            <div style="text-align:center;">
+              <div style="font-size:32px;font-weight:900;color:${matchPct>=70?'#16a34a':matchPct>=50?'#d97706':'#dc2626'}">${matchPct}%</div>
+              <div style="font-size:11px;color:#64748b;">構え通り</div>
+            </div>
+            <div style="flex:1;">
+              <div class="bar-row"><span class="bar-label">一致</span><div class="bar-bg"><div class="bar-fill" style="width:${matchPct}%;background:#16a34a"></div></div><span class="bar-val">${matched}球</span></div>
+              <div class="bar-row"><span class="bar-label">ズレ</span><div class="bar-bg"><div class="bar-fill" style="width:${100-matchPct}%;background:#dc2626"></div></div><span class="bar-val">${withB.length-matched}球</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider page-break">
+
+      <!-- ④ 捕手別配球傾向 -->
+      ${catchers.length>0?`
+      <div class="rpt-section">
+        <div class="rpt-section-title">④ 捕手別配球傾向</div>
+        <div class="rpt-grid rpt-grid-2">
+          ${catchers.map(c=>{
+            const cps=ps.filter(p=>catcherMap[p.ts]===c);
+            const withBc=cps.filter(p=>p.setup&&p.pitch);
+            const mc=withBc.filter(p=>p.matched).length;
+            const mpct=withBc.length?Math.round(mc/withBc.length*100):null;
+            const sc=cps.filter(p=>['S','F','H','O'].includes(p.result)).length;
+            const spct=cps.length?Math.round(sc/cps.length*100):0;
+            const typeCnt2={};
+            cps.forEach(p=>{typeCnt2[p.type]=(typeCnt2[p.type]||0)+1;});
+            const top3=Object.entries(typeCnt2).sort((a,b)=>b[1]-a[1]).slice(0,3);
+            const zoneCnt2={};
+            cps.filter(p=>p.setup).forEach(p=>{const k=`${p.setup.r}-${p.setup.c}`;zoneCnt2[k]=(zoneCnt2[k]||0)+1;});
+            const topZ=Object.entries(zoneCnt2).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>{const[r,cv]=k.split('-').map(Number);return ZN[r][cv];});
+            const zMax2=Math.max(...Object.values(zoneCnt2),1);
+            const mCol=mpct!==null?(mpct>=70?'#16a34a':mpct>=50?'#d97706':'#dc2626'):'#64748b';
+            return `<div class="rpt-card">
+              <div style="font-size:15px;font-weight:900;color:#0f1b2d;margin-bottom:10px;">🧤 ${c} <span style="font-size:11px;font-weight:400;color:#64748b;">${cps.length}球</span></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+                <div style="text-align:center;background:#f8fafc;border-radius:6px;padding:8px;">
+                  <div style="font-size:24px;font-weight:900;color:${mCol}">${mpct!==null?mpct+'%':'-'}</div>
+                  <div style="font-size:10px;color:#64748b;">構え一致率</div>
+                </div>
+                <div style="text-align:center;background:#f8fafc;border-radius:6px;padding:8px;">
+                  <div style="font-size:24px;font-weight:900;color:#0369a1">${spct}%</div>
+                  <div style="font-size:10px;color:#64748b;">ストライク率</div>
+                </div>
+              </div>
+              <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px;">多用球種</div>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">
+                ${top3.map(([t,n])=>`<span class="badge-r" style="background:#f1f5f9;color:#0f1b2d;">${t} ${n}球</span>`).join('')}
+              </div>
+              <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px;">構えコース分布</div>
+              <div class="zone-tbl">${buildZoneTable(zoneCnt2,zMax2,'rgba(192,132,252','#fff')}</div>
+              ${topZ.length?`<div style="font-size:10px;color:#64748b;margin-top:6px;">多用コース：<b>${topZ.join('　')}</b></div>`:''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      <hr class="divider">
+      `:''}
+
+      <!-- ⑤ 打者別対策 -->
+      <div class="rpt-section">
+        <div class="rpt-section-title">${catchers.length>0?'⑤':'④'} 打者別対策</div>
+        ${batters.length?batterSections:'<p style="color:#94a3b8;font-size:12px;">打者データなし</p>'}
+      </div>
+
+    </div>
+  </div>`;
+}
+
+function rCard(label,val,color='#0f1b2d'){
+  return `<div class="rpt-card">
+    <div class="rpt-card-title">${label}</div>
+    <div class="stat-big" style="color:${color}">${val}</div>
+  </div>`;
+}
+
+function buildZoneTable(cnt,max,rgbBase,textCol){
+  let html='';
+  for(let r=0;r<5;r++){
+    for(let c=0;c<5;c++){
+      const k=`${r}-${c}`;
+      const n=cnt[k]||0;
+      const a=n?n/max*0.85+0.1:0;
+      const isSz=isSZ(r,c);
+      const bg=n?`${rgbBase},${a})`:(isSz?'rgba(56,189,248,0.08)':'rgba(0,0,0,0.04)');
+      const border=isSz?'1px solid rgba(56,189,248,0.3)':'1px solid #e2e8f0';
+      html+=`<div class="zone-cell-r" style="background:${bg};border:${border};color:${n&&a>0.4?textCol:'#94a3b8'}">${n||''}</div>`;
+    }
+  }
+  return html;
+}
+
+function buildBatterSection(name,ps){
+  const ab=S.abs.find(a=>a.batter===name);
+  const hand=ab?.hand||'R';
+  const bps=S.abs.filter(a=>a.batter===name).flatMap(a=>a.pitches);
+  if(!bps.length) return '';
+
+  const tot=bps.length;
+  const hits=bps.filter(p=>p.result==='H').length;
+  const walks=bps.filter(p=>p.result==='W').length;
+  const outs=bps.filter(p=>p.result==='O').length;
+  const stk=bps.filter(p=>['S','F'].includes(p.result)).length;
+  const fouls=bps.filter(p=>p.result==='F').length;
+  const batted=bps.filter(p=>p.battedDir);
+
+  // 球種別成績
+  const typeResult={};
+  bps.forEach(p=>{
+    if(!typeResult[p.type])typeResult[p.type]={t:0,h:0,o:0,k:0};
+    typeResult[p.type].t++;
+    if(p.result==='H')typeResult[p.type].h++;
+    if(p.result==='O')typeResult[p.type].o++;
+    if(p.result==='S')typeResult[p.type].k++;
+  });
+  const typeSorted=Object.entries(typeResult).sort((a,b)=>b[1].t-a[1].t);
+
+  // コース分布
+  const zoneCnt={};
+  bps.forEach(p=>{if(p.pitch){const k=`${p.pitch.r}-${p.pitch.c}`;zoneCnt[k]=(zoneCnt[k]||0)+1;}});
+  const zMax=Math.max(...Object.values(zoneCnt),1);
+
+  // コース別ヒット
+  const zoneHit={};
+  bps.filter(p=>p.result==='H'&&p.pitch).forEach(p=>{const k=`${p.pitch.r}-${p.pitch.c}`;zoneHit[k]=(zoneHit[k]||0)+1;});
+  const zhMax=Math.max(...Object.values(zoneHit),1);
+
+  // 打球方向
+  const dirCnt={};
+  batted.forEach(p=>{dirCnt[p.battedDir]=(dirCnt[p.battedDir]||0)+1;});
+  const pullDirs=hand==='R'?['左翼','左中','三塁側']:['右翼','右中','一塁側'];
+  const opposDirs=hand==='R'?['右翼','右中','一塁側']:['左翼','左中','三塁側'];
+  const pullCnt=batted.filter(p=>pullDirs.includes(p.battedDir)).length;
+  const opposCnt=batted.filter(p=>opposDirs.includes(p.battedDir)).length;
+  const tendency=pullCnt>opposCnt?'引っ張り':opposCnt>pullCnt?'逆方向':'センター';
+  const tendencyCol=tendency==='引っ張り'?'tag-red':tendency==='逆方向'?'tag-blue':'tag-green';
+
+  // 弱点コース（打席数多いのに安打少ないゾーン）
+  const weakZones=Object.entries(zoneCnt)
+    .filter(([k,n])=>n>=2&&!(zoneHit[k]))
+    .sort((a,b)=>b[1]-a[1]).slice(0,3)
+    .map(([k])=>{const[r,c]=k.split('-').map(Number);return ZN[r][c];});
+  const strongZones=Object.entries(zoneHit)
+    .sort((a,b)=>b[1]-a[1]).slice(0,3)
+    .map(([k])=>{const[r,c]=k.split('-').map(Number);return ZN[r][c];});
+
+  return `<div class="batter-card">
+    <div class="batter-name">
+      ${name}
+      <span class="tag tag-blue">${hand==='R'?'右打':'左打'}</span>
+      ${batted.length?`<span class="tag ${tendencyCol}">${tendency}傾向</span>`:''}
+    </div>
+    <div class="rpt-grid rpt-grid-3" style="margin-bottom:14px;">
+      ${rCard('対戦球数',tot+'球')}
+      ${rCard('被安打',hits+'本',hits>=2?'#b91c1c':'#0f1b2d')}
+      ${rCard('四死球',walks+'個',walks>=2?'#b91c1c':'#0f1b2d')}
+    </div>
+
+    <div class="rpt-grid rpt-grid-2" style="margin-bottom:14px;">
+      <div class="rpt-card">
+        <div class="rpt-card-title">球種別成績</div>
+        <table class="rpt-tbl">
+          <thead><tr><th>球種</th><th>投球</th><th>安打</th><th>アウト</th><th>StrK</th></tr></thead>
+          <tbody>
+            ${typeSorted.map(([t,d])=>`<tr>
+              <td><b>${t}</b></td>
+              <td>${d.t}</td>
+              <td style="color:${d.h?'#b91c1c':'#64748b'};font-weight:${d.h?'700':'400'}">${d.h}</td>
+              <td style="color:#16a34a;font-weight:${d.o?'700':'400'}">${d.o}</td>
+              <td>${d.k}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="rpt-card" style="margin-bottom:8px;">
+          <div class="rpt-card-title">投球コース</div>
+          <div class="zone-tbl">${buildZoneTable(zoneCnt,zMax,'rgba(56,189,248','#fff')}</div>
+        </div>
+        <div class="rpt-card">
+          <div class="rpt-card-title">被安打コース</div>
+          <div class="zone-tbl">${buildZoneTable(zoneHit,zhMax||1,'rgba(248,113,113','#fff')}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tendency-box">
+      <div style="font-weight:700;margin-bottom:6px;font-size:12px;color:rgba(255,255,255,0.7);">📌 対策ポイント</div>
+      ${weakZones.length?`<div class="t-row"><span>✅ 弱点コース（安打なし）</span><span style="color:#4ade80;font-weight:700">${weakZones.join('　')}</span></div>`:''}
+      ${strongZones.length?`<div class="t-row"><span>⚠️ 被安打コース</span><span style="color:#f87171;font-weight:700">${strongZones.join('　')}</span></div>`:''}
+      ${batted.length?`<div class="t-row"><span>打球方向</span><span style="color:#fbbf24;font-weight:700">${tendency}（${Object.entries(dirCnt).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([d,n])=>d+' '+n).join('　')}）</span></div>`:''}
+      <div class="t-row"><span>ファウル</span><span style="color:#c084fc;font-weight:700">${fouls}球（粘り度：${tot?Math.round(fouls/tot*100):0}%）</span></div>
+    </div>
+  </div>`;
+}
+
+/* ──────────────────────────────────────
+   TOAST
+────────────────────────────────────── */
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+/* ══════════════════════════════════════
+   スマホ UI ロジック
+══════════════════════════════════════ */
+const SP_STEPS = ['setup','type','pitch','result','batted'];
+let spStep = 0;
+let spSel = { setup:null, type:null, pitch:null, result:null, battedDir:null, battedType:null };
+const isMobile = () => window.innerWidth <= 768;
+
+// ── ヘッダー同期 ──
+function spSyncHeader(){
+  if(!isMobile()) return;
+  const ab = S.abs[S.cur];
+  document.getElementById('spHdrAB').textContent = ab ? `第${ab.num}打席${ab.batter?' / '+ab.batter:''}` : '';
+  spRenderCountDots();
+}
+
+function spRenderCountDots(){
+  const mk=(id,tot,fill,cls)=>{
+    const el=document.getElementById(id); if(!el)return;
+    el.innerHTML=Array(tot).fill(0).map((_,i)=>`<div class="cdot ${i<fill?'on-'+cls:''}" style="width:10px;height:10px;"></div>`).join('');
+  };
+  mk('spBDots',4,S.balls,'B');
+  mk('spSDots',3,S.strikes,'S');
+  mk('spODots',3,S.outs,'O');
+}
+
+// ── 打席リスト ──
+function spShowAbList(){
+  spRenderAbList();
+  document.getElementById('spAbListScreen').style.display='block';
+}
+function spCloseAbList(){
+  document.getElementById('spAbListScreen').style.display='none';
+}
+function spRenderAbList(){
+  const el=document.getElementById('spAbListBody'); if(!el)return;
+  el.innerHTML=S.abs.map((ab,i)=>{
+    const bdg=ab.pitches.map(p=>`<span class="badge b-${p.result}">${p.result}</span>`).join('');
+    return `<div onclick="spSelectAB(${i})" style="padding:14px;border-radius:10px;border:1.5px solid ${i===S.cur?'var(--accent)':'var(--border)'};background:${i===S.cur?'rgba(56,189,248,0.1)':'rgba(255,255,255,0.03)'};margin-bottom:8px;cursor:pointer;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+        <span style="font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;color:var(--accent);">${ab.num}</span>
+        <div>
+          <div style="font-size:14px;font-weight:700;">${ab.batter||'（打者未入力）'}${ab.catcher?` <span style="font-size:11px;color:var(--accent);font-weight:400;">🧤${ab.catcher}</span>`:''}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${ab.hand==='R'?'右打':'左打'} / ${ab.pitches.length}球</div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:3px;flex-wrap:wrap;max-width:120px;justify-content:flex-end;">${bdg}</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <input type="text" value="${ab.batter}" placeholder="打者名" onclick="event.stopPropagation()"
+          oninput="S.abs[${i}].batter=this.value;spSyncHeader();renderABList();saveData();"
+          style="flex:1;background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:7px;font-size:13px;font-family:inherit;">
+        <input type="text" value="${ab.catcher||''}" placeholder="捕手名" onclick="event.stopPropagation()"
+          oninput="S.abs[${i}].catcher=this.value;saveData();"
+          style="flex:1;background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:7px;font-size:13px;font-family:inherit;">
+        <button onclick="event.stopPropagation();spToggleHand(${i})" style="padding:7px 12px;border-radius:7px;border:1px solid var(--border);background:${ab.hand==='R'?'var(--orange)':'transparent'};color:${ab.hand==='R'?'#fff':'var(--muted)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">
+          ${ab.hand==='R'?'右':'左'}打
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function spSelectAB(idx){
+  S.cur=idx; recalcCount(); renderABList(); renderCurrentAB();
+  spSyncHeader(); spCloseAbList();
+}
+function spToggleHand(idx){
+  S.abs[idx].hand = S.abs[idx].hand==='R'?'L':'R';
+  saveData(); spRenderAbList();
+}
+
+// ── ログ画面 ──
+function spShowLog(){
+  spRenderLog();
+  document.getElementById('spLogScreen').style.display='block';
+}
+function spCloseLog(){
+  document.getElementById('spLogScreen').style.display='none';
+}
+function spRenderLog(){
+  const el=document.getElementById('spLogBody'); if(!el)return;
+  const ab=S.abs[S.cur];
+  if(!ab||!ab.pitches.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted);font-size:14px;">まだ投球記録がありません</div>';
+    return;
+  }
+  el.innerHTML=[...ab.pitches].reverse().map((p,ri)=>{
+    const i=ab.pitches.length-1-ri;
+    return `<div style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.03);margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-family:'Oswald',sans-serif;font-size:18px;font-weight:700;color:var(--muted);">#${p.num}</span>
+        <span style="font-family:'Oswald',sans-serif;font-size:13px;color:var(--muted);">${p.count}</span>
+        <span style="font-size:14px;font-weight:700;">${p.type}</span>
+        <span class="badge b-${p.result}" style="font-size:11px;padding:3px 8px;">${RL[p.result]}</span>
+        <span style="margin-left:auto;font-size:16px;font-weight:700;color:${p.matched?'var(--green)':'var(--red)'};">${p.matched?'✔':'✘'}</span>
+        <button onclick="spDelPitch(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;padding:0 4px;">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;font-size:11px;flex-wrap:wrap;">
+        <span style="color:var(--purple);">構え：${p.setup?.label||'-'}</span>
+        <span style="color:var(--orange);">実際：${p.pitch?.label||'-'}</span>
+        ${p.battedDir?`<span style="color:var(--green);">${p.battedDir}${p.battedType?' '+p.battedType:''}</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+function spDelPitch(idx){
+  delPitch(idx);
+  spSyncHeader();
+  spRenderLog();
+}
+
+// ── ポップアップ入力 ──
+function spOpenRecord(){
+  spStep=0;
+  spSel={setup:null,type:null,pitch:null,result:null,battedDir:null,battedType:null};
+  spRenderStep();
+  document.getElementById('spOverlay').classList.add('open');
+}
+function spCloseRecord(){
+  document.getElementById('spOverlay').classList.remove('open');
+}
+
+function spRenderStep(){
+  const steps=['捕手の構え','球　種','実際のコース','結　果','打球方向'];
+  const colors=['var(--purple)','var(--orange)','var(--accent)','var(--green)','var(--green)'];
+
+  // インジケーター
+  const indEl=document.getElementById('spStepIndicator');
+  indEl.innerHTML=steps.map((_,i)=>
+    `<div class="sp-step-dot ${i<spStep?'done':i===spStep?'active':''}"></div>`
+  ).join('')+`<div class="sp-step-title" style="color:${colors[spStep]}">${steps[spStep]}</div>`;
+
+  // ナビボタン
+  const back=document.getElementById('spBack');
+  const next=document.getElementById('spNext');
+  back.style.display = spStep===0?'none':'flex';
+  if(spStep===SP_STEPS.length-1){
+    next.textContent='✚ 記録する';
+    next.style.background='var(--accent)';
+  } else if(spStep===4){
+    next.textContent='スキップして記録';
+    next.style.background='var(--muted)';
+  } else {
+    next.textContent='次へ →';
+    next.style.background='var(--accent)';
+  }
+
+  const body=document.getElementById('spSheetBody');
+  const step=SP_STEPS[spStep];
+
+  if(step==='setup'||step==='pitch'){
+    const mode=step;
+    const selClass=mode==='setup'?'sel-s':'sel-p';
+    body.innerHTML=`
+      <div class="sp-zone-lbl"><span>外角</span><span>内角</span></div>
+      <div class="sp-zone-grid" id="spZoneGrid"></div>
+      <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:4px;">
+        ${mode==='setup'?'▲ バックネット裏・捕手視点':'▲ 実際に来たコース'}
+      </div>`;
+    const grid=document.getElementById('spZoneGrid');
+    for(let r=0;r<5;r++) for(let c=0;c<5;c++){
+      const cell=document.createElement('div');
+      const sz=isSZ(r,c);
+      cell.className='sp-zcell '+(sz?'sz':'bz');
+      cell.title=ZN[r][c];
+      const sel=spSel[mode];
+      if(sel&&sel.r===r&&sel.c===c) cell.classList.add(selClass);
+      cell.onclick=()=>{
+        spSel[mode]={r,c,label:ZN[r][c],sz:sz};
+        document.querySelectorAll('.sp-zcell').forEach(x=>x.classList.remove(selClass));
+        cell.classList.add(selClass);
+      };
+      grid.appendChild(cell);
+    }
+
+  } else if(step==='type'){
+    body.innerHTML=`<div class="sp-type-grid">${
+      TYPES.map(t=>`<button class="sp-type-btn${spSel.type===t?' on':''}" onclick="spSelType('${t}',this)">${t}</button>`).join('')
+    }</div>`;
+
+  } else if(step==='result'){
+    const resMap=[
+      {k:'S',lbl:'ストライク',col:'var(--orange)'},
+      {k:'B',lbl:'ボール',col:'var(--accent)'},
+      {k:'F',lbl:'ファウル',col:'var(--purple)'},
+      {k:'H',lbl:'安　打',col:'var(--green)'},
+      {k:'O',lbl:'アウト',col:'var(--red)'},
+      {k:'W',lbl:'四球/死球',col:'var(--yellow)'},
+    ];
+    body.innerHTML=`<div class="sp-res-grid">${
+      resMap.map(r=>`
+        <button class="sp-res-btn" onclick="spSelResult('${r.k}',this)"
+          style="border-color:${r.col};color:${r.col};${spSel.result===r.k?`background:${r.col};color:${r.k==='B'?'#000':'r.k==='W'?'#000':'#fff'};`:''}"
+        >${r.lbl}</button>`).join('')
+    }</div>`;
+
+  } else if(step==='batted'){
+    body.innerHTML=`
+      <div class="sp-field-wrap">
+        <svg width="220" height="200" viewBox="0 0 180 160" id="spFieldSvg" style="display:block;">
+          <path d="M90,148 L8,20 L90,8 L172,20 Z" fill="rgba(74,222,128,0.06)" stroke="rgba(74,222,128,0.18)" stroke-width="1.5"/>
+          <polygon points="90,140 52,112 90,84 128,112" fill="rgba(251,191,36,0.1)" stroke="rgba(251,191,36,0.35)" stroke-width="1.2"/>
+          <circle cx="90" cy="112" r="5" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+          <polygon points="90,148 84,142 90,136 96,142" fill="var(--yellow)" opacity="0.85"/>
+          <rect x="124" y="108" width="8" height="8" rx="1" fill="rgba(255,255,255,0.45)" transform="rotate(45,128,112)"/>
+          <rect x="86" y="80" width="8" height="8" rx="1" fill="rgba(255,255,255,0.45)" transform="rotate(45,90,84)"/>
+          <rect x="48" y="108" width="8" height="8" rx="1" fill="rgba(255,255,255,0.45)" transform="rotate(45,52,112)"/>
+          <path d="M90,148 L8,20 L50,20 L90,84 Z" fill="transparent" style="cursor:pointer" onclick="spSelDir('左翼')"/>
+          <path d="M90,84 L50,20 L90,8 Z" fill="transparent" style="cursor:pointer" onclick="spSelDir('左中')"/>
+          <path d="M90,84 L90,8 L130,20 Z" fill="transparent" style="cursor:pointer" onclick="spSelDir('中堅')"/>
+          <path d="M90,84 L130,20 L172,20 Z" fill="transparent" style="cursor:pointer" onclick="spSelDir('右中')"/>
+          <path d="M90,148 L128,112 L90,84 L172,20 Z" fill="transparent" style="cursor:pointer" onclick="spSelDir('右翼')"/>
+          <path d="M90,148 L52,112 L8,20 Z" fill="transparent" style="cursor:pointer" onclick="spSelDir('三塁側')"/>
+          <path d="M90,140 L52,112 L90,84 L128,112 Z" fill="transparent" style="cursor:pointer" onclick="spSelDir('投手前')"/>
+          <path d="M90,148 L128,112 L172,20 Z" fill="transparent" style="cursor:pointer" onclick="spSelDir('一塁側')"/>
+          <text x="28" y="70" text-anchor="middle" font-size="10" fill="rgba(74,222,128,0.6)" font-family="'Oswald',sans-serif">左翼</text>
+          <text x="62" y="30" text-anchor="middle" font-size="10" fill="rgba(74,222,128,0.6)" font-family="'Oswald',sans-serif">左中</text>
+          <text x="90" y="20" text-anchor="middle" font-size="10" fill="rgba(74,222,128,0.6)" font-family="'Oswald',sans-serif">中堅</text>
+          <text x="118" y="30" text-anchor="middle" font-size="10" fill="rgba(74,222,128,0.6)" font-family="'Oswald',sans-serif">右中</text>
+          <text x="152" y="70" text-anchor="middle" font-size="10" fill="rgba(74,222,128,0.6)" font-family="'Oswald',sans-serif">右翼</text>
+          <text x="24" y="128" text-anchor="middle" font-size="10" fill="rgba(251,191,36,0.6)" font-family="'Oswald',sans-serif">三塁</text>
+          <text x="90" y="120" text-anchor="middle" font-size="10" fill="rgba(251,191,36,0.6)" font-family="'Oswald',sans-serif">投前</text>
+          <text x="156" y="128" text-anchor="middle" font-size="10" fill="rgba(251,191,36,0.6)" font-family="'Oswald',sans-serif">一塁</text>
+          <circle id="spFieldMarker" cx="-99" cy="-99" r="12" fill="none" stroke="var(--green)" stroke-width="2.5" pointer-events="none"/>
+          <circle id="spFieldMarkerDot" cx="-99" cy="-99" r="5" fill="var(--green)" pointer-events="none"/>
+          <text id="spFieldDirLabel" x="90" y="157" text-anchor="middle" font-size="12" fill="var(--green)" font-family="'Oswald',sans-serif" font-weight="700">${spSel.battedDir||'タップして選択'}</text>
+        </svg>
+        <div class="sp-battype-grid">
+          ${BAT_TYPES.map(t=>`<button class="sp-battype-btn${spSel.battedType===t?' on':''}" onclick="spSelBatType('${t}',this)">${t}</button>`).join('')}
+        </div>
+      </div>`;
+    // マーカー復元
+    if(spSel.battedDir) spUpdateFieldMarker(spSel.battedDir);
+  }
+}
+
+function spSelType(t,btn){
+  spSel.type=t;
+  document.querySelectorAll('.sp-type-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+function spSelResult(k,btn){
+  spSel.result=k;
+  const resMap={S:'var(--orange)',B:'var(--accent)',F:'var(--purple)',H:'var(--green)',O:'var(--red)',W:'var(--yellow)'};
+  document.querySelectorAll('.sp-res-btn').forEach(b=>{ b.style.background=''; b.style.color=b.style.borderColor||''; });
+  btn.style.background=resMap[k];
+  btn.style.color=['B','W','H'].includes(k)?'#000':'#fff';
+  // 打球が必要かどうかで次ステップを調整
+}
+
+function spSelDir(dir){
+  spSel.battedDir=dir;
+  spUpdateFieldMarker(dir);
+  const lbl=document.getElementById('spFieldDirLabel');
+  if(lbl) lbl.textContent=dir;
+}
+function spUpdateFieldMarker(dir){
+  const coords=FIELD_COORDS[dir]; if(!coords)return;
+  const mk=document.getElementById('spFieldMarker');
+  const md=document.getElementById('spFieldMarkerDot');
+  if(mk){mk.setAttribute('cx',coords[0]);mk.setAttribute('cy',coords[1]);}
+  if(md){md.setAttribute('cx',coords[0]);md.setAttribute('cy',coords[1]);}
+}
+function spSelBatType(t,btn){
+  spSel.battedType=t;
+  document.querySelectorAll('.sp-battype-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+function spNextStep(){
+  // バリデーション
+  if(spStep===0&&!spSel.setup){ toast('構えのコースを選んでください'); return; }
+  if(spStep===1&&!spSel.type){ toast('球種を選んでください'); return; }
+  if(spStep===2&&!spSel.pitch){ toast('実際のコースを選んでください'); return; }
+  if(spStep===3){
+    if(!spSel.result){ toast('結果を選んでください'); return; }
+    // 安打・アウトの場合は打球ステップへ、それ以外は記録
+    if(['H','O'].includes(spSel.result)){
+      spStep=4; spRenderStep(); return;
+    } else {
+      spCommit(); return;
+    }
+  }
+  if(spStep===4){ spCommit(); return; }
+  spStep++;
+  spRenderStep();
+}
+function spPrevStep(){
+  if(spStep>0){ spStep--; spRenderStep(); }
+}
+
+function spCommit(){
+  const {setup,type,pitch,result,battedDir,battedType}=spSel;
+  if(!setup||!type||!pitch||!result) return;
+  const ab=S.abs[S.cur]; if(!ab)return;
+  const matched=setup.r===pitch.r&&setup.c===pitch.c;
+  const p={num:ab.pitches.length+1,count:`${S.balls}-${S.strikes}`,type,setup,pitch,result,matched,
+    battedDir:battedDir||null,battedType:battedType||null,ts:Date.now()};
+  ab.pitches.push(p);
+
+  if(result==='B'){if(S.balls<3)S.balls++;else{S.balls=0;S.strikes=0;}}
+  else if(result==='S'){if(S.strikes<2)S.strikes++;else{S.balls=0;S.strikes=0;}}
+  else if(result==='F'){if(S.strikes<2)S.strikes++;}
+  else if(['H','O','W'].includes(result)){ab.finalResult=result;S.balls=0;S.strikes=0;}
+
+  updateDots(); renderLog(); renderABList(); updateStats(); saveData();
+  spSyncHeader();
+  spCloseRecord();
+
+  const icon=matched?'✅':'⚠️';
+  const dirStr=battedDir?` ${battedDir}${battedType?' '+battedType:''}` :'';
+  toast(`${icon} #${p.num} ${type} → ${RL[result]}${dirStr}`);
+}
+
+// ウィンドウリサイズ時に対応
+window.addEventListener('resize',()=>{
+  if(isMobile()) spSyncHeader();
+});
+
+init();
+// init後にスマホヘッダー同期
+setTimeout(()=>{ if(isMobile()) spSyncHeader(); },100);
+</script>
+</body>
+</html>
